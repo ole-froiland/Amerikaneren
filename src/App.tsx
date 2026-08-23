@@ -313,14 +313,6 @@ function GameTable(props: {
           </div>
         )}
 
-        {game.phase === "playing" && (
-          <div className={`turn-focus ${ownTurn ? "your-turn" : ""}`}>
-            <PlayerAvatar player={game.players[game.turn]} />
-            <span><small>{ownTurn ? "Din tur" : "Spiller nå"}</small><b>{game.players[game.turn].name}</b></span>
-            {!ownTurn && <i><span /><span /><span /></i>}
-          </div>
-        )}
-
         <div className="trick-area" aria-label="Kort i dette stikket">
           {game.trick.map((played, index) => {
             const seat = ["south", "west", "north", "east"][(played.playerIndex - ownIndex + 4) % 4];
