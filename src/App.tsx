@@ -34,7 +34,7 @@ const NAME_KEY = "amerikaneren-navn";
 /** Hvor lenge vi venter på verten før en annen spiller driver botene videre. */
 const HOST_TIMEOUT = 8000;
 const COLLECT_DELAY = 1700;
-const DEAL_DELAY = 1600;
+const DEAL_DELAY = 1450;
 const BOT_DELAY = { playing: 850, other: 550 };
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -436,7 +436,7 @@ function GameTable(props: {
           : game.trick.length === 0 ? "Utspill" : `${game.trick.length + 1}. kort`;
 
   return (
-    <section className="game-screen">
+    <section className={`game-screen ${props.dealing ? "is-dealing" : ""}`}>
       <div className="score-strip">
         <span>Runde {game.round}</span>
         {game.players.map((player, index) => <div key={player.id} className={`${index === ownIndex ? "you" : ""} ${teammate(index) ? "same-team" : ""} ${teamRole(index) ? `team-${teamRole(index)}` : ""}`}><PlayerAvatar player={player} size="tiny" /><span>{player.name}<small>{player.score} p {teamRole(index) && `· ${teamRole(index) === "contract" ? "Budlag" : "Motlag"}`}</small></span></div>)}
@@ -534,16 +534,20 @@ function GameTable(props: {
 }
 
 function DealTransition({ round }: { round: number }) {
+  const seats = ["south", "west", "north", "east"] as const;
   return (
     <div className="deal-transition" role="status" aria-label={`Stokker og deler kort til runde ${round}`}>
       <div className="deal-stage" aria-hidden="true">
         <span className="deal-stack" />
-        <span className="deal-card shuffle-left" />
-        <span className="deal-card shuffle-right" />
-        <span className="deal-card deal-north" />
-        <span className="deal-card deal-west" />
-        <span className="deal-card deal-east" />
-        <span className="deal-card deal-south" />
+        <span className="shuffle-packet shuffle-left" />
+        <span className="shuffle-packet shuffle-right" />
+        {Array.from({ length: 16 }, (_, index) => (
+          <span
+            className={`deal-card to-${seats[index % seats.length]}`}
+            style={{ "--deal-index": index } as CSSProperties}
+            key={index}
+          />
+        ))}
       </div>
       <p><b>Stokker og deler</b><span>Runde {round}</span></p>
     </div>
