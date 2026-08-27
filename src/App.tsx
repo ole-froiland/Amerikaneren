@@ -12,8 +12,10 @@ import {
   botCard,
   botDiscard,
   botTrump,
+  canClaimRest,
   cardLabel,
   chooseTrump,
+  claimRest,
   collectTrick,
   createGame,
   createPlayers,
@@ -241,6 +243,11 @@ export default function App() {
           onTrump={(suit) => commitGame(chooseTrump(game, suit))}
           onPlay={(id) => commitGame(playCard(game, id))}
           onNext={() => commitGame(nextRound(game))}
+          onClaim={() => {
+            if (!canClaimRest(game, ownIndex)) return false;
+            commitGame(claimRest(game, ownIndex));
+            return true;
+          }}
           onRestart={room
             ? () => commitGame(createGame(game.players.map((player) => ({ ...player, score: 0, tricks: 0 }))))
             : startSolo}
@@ -377,9 +384,11 @@ function GameTable(props: {
   game: GameState; ownIndex: number; selected: string[]; isOnline: boolean; roomCode?: string;
   onSelect: (id: string) => void; onBid: (value: number | "american" | "pass") => void; onExchange: () => void;
   onTrump: (suit: Suit) => void; onPlay: (id: string) => void; onNext: () => void; onRestart: () => void;
+  onClaim: () => boolean;
 }) {
   const { game, ownIndex } = props;
   const [showLastTrick, setShowLastTrick] = useState(false);
+  const [claimDenied, setClaimDenied] = useState(false);
   const ownTurn = game.turn === ownIndex;
   const legal = game.phase === "playing" && ownTurn ? new Set(legalCards(game).map((card) => card.id)) : new Set<string>();
   const relative = (offset: number) => (ownIndex + offset) % 4;
@@ -467,6 +476,19 @@ function GameTable(props: {
               onSelect={props.onSelect}
             />
             {game.phase === "exchange" && ownTurn && <button className="floating-action" disabled={props.selected.length !== 4} onClick={props.onExchange}>Legg bort {props.selected.length}/4</button>}
+            {game.phase === "playing" && ownTurn && game.hands[ownIndex].length > 1 && game.hands[ownIndex].length <= 6 && (
+              <button
+                className={`claim-button ${claimDenied ? "denied" : ""}`}
+                onClick={() => {
+                  if (props.onClaim()) return;
+                  // Kravet står ikke - knappen rister i stedet for å gjøre noe.
+                  setClaimDenied(true);
+                  window.setTimeout(() => setClaimDenied(false), 500);
+                }}
+              >
+                <b>Resten står</b><small>ta alle stikkene som er igjen</small>
+              </button>
+            )}
           </div>
         )}
 

@@ -289,6 +289,92 @@ function scoreRound(state: GameState): GameState {
   };
 }
 
+/** Rekkefølgen et krav spilles i: trumf først for å tømme motstanderne, så sidekortene. */
+function claimOrder(cards: Card[], trump: Suit): Card[] {
+  return [...cards].sort((a, b) => Number(b.suit === trump) - Number(a.suit === trump) || b.rank - a.rank);
+}
+
+/** Billigste kort først, så vi bruker opp de svake før de sterke. */
+function cheapestFirst(cards: Card[], trump: Suit): Card[] {
+  return [...cards].sort((a, b) => Number(a.suit === trump) - Number(b.suit === trump) || a.rank - b.rank);
+}
+
+/**
+ * Står resten av hånden uansett hvordan de tre andre spiller?
+ *
+ * Trumf: hvert utspill av trumf tvinger alle som har trumf til å legge én, så det
+ * holder å ha like mange trumf som den motstanderen som sitter med flest - forutsatt
+ * at samtlige av våre er høyere enn deres høyeste.
+ * Sidekort: står bare når motstanderne er tomme for trumf og ingen har noe høyere i fargen.
+ */
+function restStands(rest: Card[], opponentHands: Card[][], trump: Suit): boolean {
+  const others = opponentHands.flat();
+  const mineTrumps = rest.filter((card) => card.suit === trump);
+  const theirTrumps = others.filter((card) => card.suit === trump);
+  if (theirTrumps.length) {
+    const highestTheirs = Math.max(...theirTrumps.map((card) => card.rank));
+    if (mineTrumps.some((card) => card.rank < highestTheirs)) return false;
+    const deepest = Math.max(...opponentHands.map((hand) => hand.filter((card) => card.suit === trump).length));
+    if (mineTrumps.length < deepest) return false;
+  }
+  return rest.filter((card) => card.suit !== trump).every((card) =>
+    others.every((other) => other.suit !== card.suit || other.rank < card.rank));
+}
+
+/** Kan noen av dem som spiller etter oss i dette stikket slå kortet? */
+function beatableInTrick(state: GameState, playerIndex: number, card: Card): boolean {
+  if (!state.trump) return true;
+  const withCard = [...state.trick, { playerIndex, card }];
+  for (let step = 1; step < 4 - state.trick.length; step += 1) {
+    const other = (playerIndex + step) % 4;
+    const beats = legalCards(state, other).some((option) =>
+      trickWinner([...withCard, { playerIndex: other, card: option }], state.trump!) === withCard.length);
+    if (beats) return true;
+  }
+  return false;
+}
+
+/** Kortene i den rekkefølgen de skal spilles for å ta alle stikkene som er igjen, eller null. */
+function claimPlan(state: GameState, playerIndex: number): Card[] | null {
+  const trump = state.trump;
+  if (state.phase !== "playing" || !trump || state.turn !== playerIndex) return null;
+  const hand = state.hands[playerIndex];
+  if (hand.length < 2) return null;
+  const opponentHands = state.hands.filter((_, index) => index !== playerIndex);
+
+  if (!state.trick.length) {
+    return restStands(hand, opponentHands, trump) ? claimOrder(hand, trump) : null;
+  }
+  // Midt i et stikk må vi først ta stikket som allerede ligger på bordet.
+  for (const opening of cheapestFirst(legalCards(state, playerIndex), trump)) {
+    if (!cardWinsCurrentTrick(state, opening) || beatableInTrick(state, playerIndex, opening)) continue;
+    const rest = hand.filter((card) => card.id !== opening.id);
+    if (restStands(rest, opponentHands, trump)) return [opening, ...claimOrder(rest, trump)];
+  }
+  return null;
+}
+
+export function canClaimRest(state: GameState, playerIndex = state.turn): boolean {
+  return claimPlan(state, playerIndex) !== null;
+}
+
+/** Spiller ut alle stikkene som er igjen. Returnerer staten uendret hvis kravet ikke står. */
+export function claimRest(state: GameState, playerIndex = state.turn): GameState {
+  const plan = claimPlan(state, playerIndex);
+  if (!plan || !state.trump) return state;
+  const trump = state.trump;
+  let next = state;
+  for (const card of plan) {
+    if (next.phase !== "playing") break;
+    next = playCard(next, card.id);
+    while (next.phase === "playing" && next.turn !== playerIndex) {
+      next = playCard(next, cheapestFirst(legalCards(next), trump)[0].id);
+    }
+    if (next.phase === "collecting") next = collectTrick(next);
+  }
+  return { ...next, message: `${state.players[playerIndex].name} hadde resten. ${next.message}` };
+}
+
 export function nextRound(state: GameState, random = Math.random): GameState {
   return createGame(state.players, (state.dealer + 1) % 4, state.round + 1, random, state.scoreHistory ?? []);
 }

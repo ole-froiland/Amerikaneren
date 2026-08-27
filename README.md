@@ -32,6 +32,10 @@ Hver romtilstand har et `version`-tall som teller oppover for hver endring.
 
 Vennene dine kommer rett inn i rommet med lenken `/?rom=KODE`.
 
+## Resten står
+
+Har du bare vinnerkort igjen, tar knappen «Resten står» hjem alle stikkene som er igjen på én gang. Kravet godtas bare når det holder uansett hvordan de andre spiller: hvert av dine trumfkort må være høyere enn alle deres, du må ha nok trumf til å tømme den som sitter med flest, og hvert sidekort må være høyest igjen i fargen. Står det ikke, rister knappen og ingenting skjer.
+
 ## iPhone og iPad
 
 Native-appen krever Xcode 26 eller nyere. Nettinnholdet bygges lokalt inn i appen, mens onlinerom bruker Netlify-funksjonen på produksjonssiden.

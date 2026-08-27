@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { botBid, botCard, botDiscard, botTrump, chooseTrump, collectTrick, createDeck, createGame, createPlayers, exchangeCards, inferredVoids, legalCards, placeBid, playCard, sortHand, trickWinner } from "./game.ts";
-import type { Card } from "./types.ts";
+import { SUITS, botBid, botCard, botDiscard, botTrump, canClaimRest, chooseTrump, claimRest, collectTrick, createDeck, createGame, createPlayers, exchangeCards, inferredVoids, legalCards, placeBid, playCard, shuffle, sortHand, trickWinner } from "./game.ts";
+import type { Card, GameState } from "./types.ts";
 
 test("deals 12 cards to four players and four to the pot", () => {
   const game = createGame(createPlayers(), 0, 1, () => 0.5);
@@ -315,4 +315,178 @@ test("four bots can finish a complete round without getting stuck", () => {
   assert.equal(game.phase, "scoring");
   assert.equal(game.completedTricks.length, 12);
   assert.equal(game.players.reduce((sum, player) => sum + player.tricks, 0), 12);
+});
+
+const claimCard = (suit: Card["suit"], rank: Card["rank"]): Card => ({ id: `${suit}-${rank}`, suit, rank });
+
+function claimState(hands: Card[][], overrides: Partial<GameState> = {}): GameState {
+  const game = createGame(createPlayers(), 0, 1, () => 0.5);
+  return {
+    ...game,
+    phase: "playing",
+    trump: "spades",
+    bid: { playerIndex: 0, value: 7 },
+    contract: 7,
+    partnerIndex: 2,
+    turn: 0,
+    trick: [],
+    hands,
+    completedTricks: [[], [], [], [], [], [], []] as GameState["completedTricks"],
+    ...overrides,
+  };
+}
+
+test("claim stands when every remaining card is a top trump", () => {
+  const state = claimState([
+    [claimCard("spades", 14), claimCard("spades", 13)],
+    [claimCard("spades", 12), claimCard("hearts", 14)],
+    [claimCard("spades", 11), claimCard("hearts", 13)],
+    [claimCard("clubs", 14), claimCard("clubs", 13)],
+  ]);
+  assert.equal(canClaimRest(state, 0), true);
+});
+
+test("claim fails when an opponent holds a higher trump", () => {
+  const state = claimState([
+    [claimCard("spades", 13), claimCard("spades", 12)],
+    [claimCard("spades", 14), claimCard("hearts", 14)],
+    [claimCard("hearts", 13), claimCard("hearts", 12)],
+    [claimCard("clubs", 14), claimCard("clubs", 13)],
+  ]);
+  assert.equal(canClaimRest(state, 0), false);
+});
+
+test("claim fails when a side-suit winner can be trumped", () => {
+  const state = claimState([
+    [claimCard("hearts", 14), claimCard("hearts", 13)],
+    [claimCard("spades", 2), claimCard("clubs", 5)],
+    [claimCard("hearts", 12), claimCard("hearts", 11)],
+    [claimCard("clubs", 14), claimCard("clubs", 13)],
+  ]);
+  assert.equal(canClaimRest(state, 0), false);
+});
+
+test("claim stands on side-suit tops once no opponent holds trump", () => {
+  const state = claimState([
+    [claimCard("hearts", 14), claimCard("clubs", 14)],
+    [claimCard("hearts", 13), claimCard("clubs", 13)],
+    [claimCard("hearts", 12), claimCard("clubs", 12)],
+    [claimCard("hearts", 11), claimCard("clubs", 11)],
+  ]);
+  assert.equal(canClaimRest(state, 0), true);
+});
+
+test("claim stands when top trumps can draw the outstanding trump first", () => {
+  const state = claimState([
+    [claimCard("spades", 14), claimCard("spades", 13), claimCard("hearts", 14)],
+    [claimCard("spades", 4), claimCard("hearts", 13), claimCard("clubs", 9)],
+    [claimCard("hearts", 12), claimCard("clubs", 13), claimCard("clubs", 8)],
+    [claimCard("hearts", 11), claimCard("clubs", 12), claimCard("clubs", 7)],
+  ]);
+  assert.equal(canClaimRest(state, 0), true);
+});
+
+test("claim fails when there are more outstanding trumps than top trumps to draw them", () => {
+  const state = claimState([
+    [claimCard("spades", 14), claimCard("hearts", 14), claimCard("hearts", 13)],
+    [claimCard("spades", 4), claimCard("spades", 3), claimCard("clubs", 9)],
+    [claimCard("hearts", 12), claimCard("clubs", 13), claimCard("clubs", 8)],
+    [claimCard("hearts", 11), claimCard("clubs", 12), claimCard("clubs", 7)],
+  ]);
+  assert.equal(canClaimRest(state, 0), false);
+});
+
+test("claim mid-trick stands only when the current trick cannot be lost", () => {
+  const safe = claimState([
+    [claimCard("spades", 14), claimCard("spades", 13)],
+    [claimCard("spades", 4), claimCard("clubs", 9)],
+    [claimCard("spades", 5), claimCard("clubs", 8)],
+    [claimCard("clubs", 7)],
+  ], { turn: 0, trick: [{ playerIndex: 3, card: claimCard("hearts", 9) }] });
+  assert.equal(canClaimRest(safe, 0), true);
+
+  const risky = claimState([
+    [claimCard("hearts", 14), claimCard("spades", 13)],
+    [claimCard("spades", 4), claimCard("clubs", 9)],
+    [claimCard("spades", 5), claimCard("clubs", 8)],
+    [claimCard("clubs", 7)],
+  ], { turn: 0, trick: [{ playerIndex: 3, card: claimCard("hearts", 9) }] });
+  assert.equal(canClaimRest(risky, 0), false);
+});
+
+test("claiming plays out every remaining trick for the claimer", () => {
+  const state = claimState([
+    [claimCard("spades", 14), claimCard("spades", 13)],
+    [claimCard("spades", 12), claimCard("hearts", 14)],
+    [claimCard("spades", 11), claimCard("hearts", 13)],
+    [claimCard("clubs", 14), claimCard("clubs", 13)],
+  ]);
+  const done = claimRest(state, 0);
+  assert.equal(done.players[0].tricks, 2);
+  assert.deepEqual(done.players.slice(1).map((player) => player.tricks), [0, 0, 0]);
+  assert.deepEqual(done.hands.map((hand) => hand.length), [0, 0, 0, 0]);
+  assert.equal(done.phase, "scoring");
+});
+
+test("claiming a hand that does not stand changes nothing", () => {
+  const state = claimState([
+    [claimCard("spades", 13), claimCard("spades", 12)],
+    [claimCard("spades", 14), claimCard("hearts", 14)],
+    [claimCard("hearts", 13), claimCard("hearts", 12)],
+    [claimCard("clubs", 14), claimCard("clubs", 13)],
+  ]);
+  assert.equal(claimRest(state, 0), state);
+});
+
+test("claim is unavailable when it is not your turn or only one card is left", () => {
+  const hands = [
+    [claimCard("spades", 14), claimCard("spades", 13)],
+    [claimCard("spades", 12), claimCard("hearts", 14)],
+    [claimCard("spades", 11), claimCard("hearts", 13)],
+    [claimCard("clubs", 14), claimCard("clubs", 13)],
+  ];
+  assert.equal(canClaimRest(claimState(hands, { turn: 1 }), 0), false);
+  const single = claimState([
+    [claimCard("spades", 14)],
+    [claimCard("spades", 12)],
+    [claimCard("spades", 11)],
+    [claimCard("clubs", 14)],
+  ]);
+  assert.equal(canClaimRest(single, 0), false);
+});
+
+/** Prøver alle lovlige forsvarsrekker og sier fra hvis motstanderne kan ta et eneste stikk. */
+function defenceAlwaysLoses(state: GameState, playerIndex: number, sequence: Card[], step = 0): boolean {
+  if (state.phase === "collecting") {
+    if (state.pendingWinner !== playerIndex) return false;
+    return defenceAlwaysLoses(collectTrick(state), playerIndex, sequence, step);
+  }
+  if (state.phase !== "playing" || state.hands.every((hand) => !hand.length)) return true;
+  if (state.turn === playerIndex) {
+    return defenceAlwaysLoses(playCard(state, sequence[step].id), playerIndex, sequence, step + 1);
+  }
+  return legalCards(state).every((option) =>
+    defenceAlwaysLoses(playCard(state, option.id), playerIndex, sequence, step));
+}
+
+test("a claim that stands cannot be beaten by any defence", () => {
+  let seed = 20260827;
+  const random = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  let claims = 0;
+  for (let deal = 0; deal < 500; deal += 1) {
+    const size = 2 + Math.floor(random() * 3);
+    const deck = shuffle(createDeck(), random);
+    const hands = [0, 1, 2, 3].map((seat) => sortHand(deck.slice(seat * size, seat * size + size)));
+    const trump = SUITS[Math.floor(random() * 4)];
+    const state = claimState(hands, { trump });
+    if (!canClaimRest(state, 0)) continue;
+    claims += 1;
+    const played = claimRest(state, 0);
+    const sequence = played.completedTricks
+      .slice(7)
+      .flatMap((trick) => trick.filter((entry) => entry.playerIndex === 0).map((entry) => entry.card));
+    assert.equal(sequence.length, size, "kravet må spille ut hele hånden");
+    assert.ok(defenceAlwaysLoses(state, 0, sequence), `forsvaret kunne ta et stikk med trumf ${trump}`);
+  }
+  assert.ok(claims >= 10, `for få krav å teste (${claims})`);
 });
