@@ -658,7 +658,7 @@ function ScoreSheet({ game, onNext, onRestart, isOnline }: { game: GameState; on
         <table className="score-history">
           <thead><tr><th>Runde</th><th>Bud</th>{game.players.map((player) => <th key={player.id}>{player.name}</th>)}</tr></thead>
           <tbody>{history.map((round) => <tr key={round.round}><td>{round.round}</td><td>{round.contract === "american" ? "A" : round.contract}{SUIT_SYMBOL[round.trump]}</td>{game.players.map((player) => { const score = round.scores.find((item) => item.playerId === player.id); return <td className={(score?.delta ?? 0) >= 0 ? "positive" : "negative"} key={player.id}>{signed(score?.delta ?? 0)}</td>; })}</tr>)}</tbody>
-          <tfoot><tr><th colSpan={2}>Totalt</th>{game.players.map((player) => <th key={player.id}>{player.score}</th>)}</tr></tfoot>
+          <tfoot><tr><th scope="row">Totalt</th><th aria-hidden="true" />{game.players.map((player) => <th key={player.id}>{player.score}</th>)}</tr></tfoot>
         </table>
       </div>
       <button className="primary-cta score-next" onClick={game.winnerIndex !== null && !isOnline ? onRestart : onNext}>{game.winnerIndex !== null ? "Spill på nytt" : "Neste omgang"}</button>
