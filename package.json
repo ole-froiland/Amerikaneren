@@ -3,20 +3,27 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "ios:sync": "npm run build && cap sync ios",
+    "ios:open": "npm run ios:sync && cap open ios",
     "preview": "vite preview",
     "test": "node --experimental-strip-types --test src/game.test.ts",
     "lint": "eslint src netlify vite.config.ts"
   },
   "dependencies": {
+    "@capacitor/core": "8.5.0",
+    "@capacitor/ios": "8.5.0",
     "@netlify/blobs": "10.7.12",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.0",
     "@eslint/js": "9.39.4",
     "@netlify/vite-plugin": "2.12.9",
     "@types/node": "22.19.19",
