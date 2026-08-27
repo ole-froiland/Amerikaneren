@@ -434,24 +434,28 @@ function GameTable(props: {
       : game.phase === "trump" ? "Velger trumf"
         : game.phase === "collecting" ? "Tok stikket"
           : game.trick.length === 0 ? "Utspill" : `${game.trick.length + 1}. kort`;
+  const statusMessage = game.phase === "playing"
+    ? ownTurn
+      ? game.trick.length === 0 ? "Din tur – spill ut" : "Din tur – spill et kort"
+      : `${game.players[game.turn].name} tenker…`
+    : game.message;
 
   return (
-    <section className={`game-screen ${props.dealing ? "is-dealing" : ""}`}>
+    <section className={`game-screen phase-${game.phase} ${ownTurn ? "is-own-turn" : ""} ${props.dealing ? "is-dealing" : ""}`}>
       <div className="score-strip">
         <span>Runde {game.round}</span>
-        {game.players.map((player, index) => <div key={player.id} className={`${index === ownIndex ? "you" : ""} ${teammate(index) ? "same-team" : ""} ${teamRole(index) ? `team-${teamRole(index)}` : ""}`}><PlayerAvatar player={player} size="tiny" /><span>{player.name}<small>{player.score} p {teamRole(index) && `· ${teamRole(index) === "contract" ? "Budlag" : "Motlag"}`}</small></span></div>)}
+        {game.players.map((player, index) => <div key={player.id} className={`${index === ownIndex ? "you" : ""} ${teammate(index) ? "same-team" : ""} ${teamRole(index) ? `team-${teamRole(index)}` : ""}`}><PlayerAvatar player={player} size="tiny" /><span>{player.name}<small>{player.score} p</small></span></div>)}
         {props.roomCode && <b className="mini-code">{props.roomCode}</b>}
       </div>
 
       <div className={`felt-table ${game.phase === "collecting" && winnerSeat ? `collecting winner-${winnerSeat}` : ""}`}>
-        <div className="play-direction" aria-label="Spillerekkefølge med klokken"><span>1</span> → <span>2</span> → <span>3</span> → <span>4</span> ↻</div>
         <Opponent player={game.players[relative(2)]} count={game.hands[relative(2)].length} active={game.turn === relative(2)} wonTrick={game.pendingWinner === relative(2)} position="north" order={3} turnLabel={turnLabel} teamRole={teamRole(relative(2))} />
         <Opponent player={game.players[relative(1)]} count={game.hands[relative(1)].length} active={game.turn === relative(1)} wonTrick={game.pendingWinner === relative(1)} position="west" order={2} turnLabel={turnLabel} teamRole={teamRole(relative(1))} />
         <Opponent player={game.players[relative(3)]} count={game.hands[relative(3)].length} active={game.turn === relative(3)} wonTrick={game.pendingWinner === relative(3)} position="east" order={4} turnLabel={turnLabel} teamRole={teamRole(relative(3))} />
 
         <div className="contract-pill">
           {game.trump ? <span className={game.trump === "hearts" || game.trump === "diamonds" ? "red" : ""}>{SUIT_SYMBOL[game.trump]} {typeof game.contract === "number" ? game.contract : "A"}</span> : game.bid ? bidLabel(game.bid.value) : "Budrunde"}
-          {bidder && <small>{bidder.name}</small>}
+          {bidder && <small>{game.requestedCard ? `Spør ${cardLabel(game.requestedCard)}` : bidder.name}</small>}
         </div>
 
         {game.partnerRevealed && game.bid && game.partnerIndex !== null && (
@@ -467,7 +471,6 @@ function GameTable(props: {
             const seat = ["south", "west", "north", "east"][(played.playerIndex - ownIndex + 4) % 4];
             return <div className={`thrown-card from-${seat}`} style={{ "--throw-order": index } as CSSProperties} key={played.card.id}><PlayingCard card={played.card} compact /></div>;
           })}
-          {!game.trick.length && game.phase === "playing" && <span className="lead-hint">{ownTurn ? "Din tur – spill ut" : `${game.players[game.turn].name} tenker…`}</span>}
         </div>
 
         {game.phase === "collecting" && game.pendingWinner !== null && (
@@ -481,8 +484,7 @@ function GameTable(props: {
         {lastTrick && lastWinner !== null && <button className="last-trick-button" onClick={() => setShowLastTrick(true)}><PlayerAvatar player={game.players[lastWinner]} size="tiny" /><span><small>Siste stikk</small><b>{game.players[lastWinner].name} vant</b></span><i>Se kortene →</i></button>}
 
         <div className="status-bubble">
-          {game.partnerRevealed && game.partnerIndex !== null && game.bid && <b>Kontraktlag: {game.players[game.bid.playerIndex].name} + {game.players[game.partnerIndex].name}</b>}
-          <span>{game.message}</span>
+          <span>{statusMessage}</span>
         </div>
 
         {game.phase === "bidding" && ownTurn && <BidControls game={game} onBid={props.onBid} />}
@@ -491,7 +493,7 @@ function GameTable(props: {
 
         {game.phase !== "scoring" && (
           <div className="hand-zone">
-            <div className={`hand-meta ${game.pendingWinner === ownIndex ? "won-trick" : ""}`}><span><b className="seat-order">1</b><PlayerAvatar player={game.players[ownIndex]} size="tiny" />{game.players[ownIndex].name}{teamRole(ownIndex) && <em>{teamRole(ownIndex) === "contract" ? "Kontraktlag" : "Motlag"}</em>}{ownTurn && <i>{turnLabel}</i>}</span><strong>{game.players[ownIndex].tricks} <small>stikk</small></strong><small className="hand-count">{game.hands[ownIndex].length} kort <span>· alle vises</span></small></div>
+            <div className={`hand-meta ${game.pendingWinner === ownIndex ? "won-trick" : ""}`}><span><b className="seat-order">1</b><PlayerAvatar player={game.players[ownIndex]} size="tiny" />{game.players[ownIndex].name}{teamRole(ownIndex) && <em>{teamRole(ownIndex) === "contract" ? "Kontraktlag" : "Motlag"}</em>}{ownTurn && <i>{turnLabel}</i>}</span><strong>{game.players[ownIndex].tricks} <small>stikk</small></strong><small className="hand-count">{game.hands[ownIndex].length} kort</small></div>
             <AnimatedHand
               cards={game.hands[ownIndex]}
               selected={props.selected}
