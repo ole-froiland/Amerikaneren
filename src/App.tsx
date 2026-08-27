@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { createRoom, getRoom, joinRoom, saveRoomGame } from "./api.ts";
+import { createRoom, inviteLink, joinRoom, pollRoom, saveRoomGame } from "./api.ts";
 import {
   RANK_NAME,
   SUITS,
@@ -28,17 +28,45 @@ import type { Card, GameState, Room, Suit } from "./types.ts";
 
 type Screen = "home" | "solo" | "online" | "lobby" | "game" | "rules";
 
+const NAME_KEY = "amerikaneren-navn";
+/** Hvor lenge vi venter på verten før en annen spiller driver botene videre. */
+const HOST_TIMEOUT = 8000;
+const COLLECT_DELAY = 1700;
+const BOT_DELAY = { playing: 850, other: 550 };
+
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const cleanCode = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+const inviteCode = () => cleanCode(new URLSearchParams(window.location.search).get("rom") ?? "");
+const storedName = () => {
+  try { return window.localStorage.getItem(NAME_KEY) ?? ""; } catch { return ""; }
+};
+
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("home");
+  const [screen, setScreen] = useState<Screen>(() => inviteCode() ? "online" : "home");
   const [game, setGame] = useState<GameState | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [playerId, setPlayerId] = useState("");
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
+  const [name, setName] = useState(storedName);
+  const [code, setCode] = useState(inviteCode);
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const roomCode = room?.code;
+
+  // Versjonen av romtilstanden vi viser. Alt som kommer inn med lavere versjon
+  // er gammelt nytt og ignoreres, slik at et sent svar aldri overskriver et ferskt trekk.
+  const versionRef = useRef(0);
+  // Settes så snart vi er inne i et rom (opprett/bli med/oppdatering).
+  const changedAtRef = useRef(0);
+  const roomRef = useRef<Room | null>(null);
+  const playerIdRef = useRef("");
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => { roomRef.current = room; }, [room]);
+  useEffect(() => { playerIdRef.current = playerId; }, [playerId]);
+  useEffect(() => {
+    try { window.localStorage.setItem(NAME_KEY, name); } catch { /* privat modus */ }
+  }, [name]);
 
   const ownIndex = useMemo(() => {
     if (!game) return 0;
@@ -47,53 +75,97 @@ export default function App() {
     return index >= 0 ? index : 0;
   }, [game, playerId, room]);
 
-  const commitGame = (next: GameState) => {
+  const applyRoom = useCallback((fresh: Room, force = false) => {
+    if (!force && fresh.version <= versionRef.current) {
+      if (fresh.version === versionRef.current) setRoom(fresh);
+      return;
+    }
+    versionRef.current = fresh.version;
+    changedAtRef.current = Date.now();
+    setRoom(fresh);
+    if (fresh.game) {
+      setGame(fresh.game);
+      setScreen("game");
+    }
+  }, []);
+
+  const commitGame = useCallback((next: GameState) => {
     setGame(next);
     setSelected([]);
-    if (room && playerId) {
-      void saveRoomGame(room.code, playerId, next)
-        .then(setRoom)
-        .catch((reason: Error) => setError(reason.message));
-    }
-  };
+    const current = roomRef.current;
+    const id = playerIdRef.current;
+    if (!current || !id) return;
+    const base = versionRef.current;
+    versionRef.current = base + 1;
+    changedAtRef.current = Date.now();
+    // Ett lagringskall om gangen, ellers kan to trekk kollidere på serveren.
+    queueRef.current = queueRef.current.then(async () => {
+      try {
+        const result = await saveRoomGame(current.code, id, next, base);
+        if (result.conflict) {
+          applyRoom(result.room, true);
+        } else {
+          versionRef.current = result.room.version;
+          changedAtRef.current = Date.now();
+          setRoom(result.room);
+        }
+      } catch (reason) {
+        setError((reason as Error).message);
+      }
+    });
+  }, [applyRoom]);
+
+  /** Bare verten kjører bots og rydder stikk – ellers ville alle fire spilt samme trekk. */
+  const canDrive = useCallback(() => {
+    const current = roomRef.current;
+    if (!current) return true;
+    if (current.hostId === playerIdRef.current) return true;
+    return Date.now() - changedAtRef.current > HOST_TIMEOUT;
+  }, []);
 
   useEffect(() => {
     if (!roomCode || screen !== "lobby" && screen !== "game") return;
-    const timer = window.setInterval(() => {
-      void getRoom(roomCode).then((fresh) => {
-        setRoom(fresh);
-        if (fresh.game) {
-          setGame(fresh.game);
-          setScreen("game");
+    let active = true;
+    const controller = new AbortController();
+    const listen = async () => {
+      while (active) {
+        if (document.hidden) { await sleep(400); continue; }
+        try {
+          const result = await pollRoom(roomCode, versionRef.current, controller.signal);
+          if (!active) return;
+          if (!("unchanged" in result)) applyRoom(result);
+        } catch {
+          if (!active) return;
+          await sleep(700);
         }
-      }).catch(() => undefined);
-    }, 1400);
-    return () => window.clearInterval(timer);
-  }, [roomCode, screen]);
+      }
+    };
+    void listen();
+    return () => { active = false; controller.abort(); };
+  }, [roomCode, screen, applyRoom]);
 
   useEffect(() => {
-    if (!game || game.phase !== "collecting") return;
-    const timer = window.setTimeout(() => commitGame(collectTrick(game)), 3400);
+    if (!game || game.phase === "scoring") return;
+    const collecting = game.phase === "collecting";
+    const botTurn = !collecting && Boolean(game.players[game.turn]?.isBot);
+    if (!collecting && !botTurn) return;
+    let timer = 0;
+    const act = () => {
+      if (!canDrive()) { timer = window.setTimeout(act, 1200); return; }
+      if (collecting) return commitGame(collectTrick(game));
+      if (game.phase === "bidding") return commitGame(placeBid(game, botBid(game)));
+      if (game.phase === "exchange") return commitGame(exchangeCards(game, botDiscard(game)));
+      if (game.phase === "trump") return commitGame(chooseTrump(game, botTrump(game)));
+      if (game.phase === "playing") return commitGame(playCard(game, botCard(game).id));
+    };
+    timer = window.setTimeout(act, collecting ? COLLECT_DELAY : game.phase === "playing" ? BOT_DELAY.playing : BOT_DELAY.other);
     return () => window.clearTimeout(timer);
-    // collecting is a timed state-machine transition.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game]);
-
-  useEffect(() => {
-    if (!game || game.phase === "scoring" || !game.players[game.turn]?.isBot) return;
-    const timer = window.setTimeout(() => {
-      if (game.phase === "bidding") commitGame(placeBid(game, botBid(game)));
-      if (game.phase === "exchange") commitGame(exchangeCards(game, botDiscard(game)));
-      if (game.phase === "trump") commitGame(chooseTrump(game, botTrump(game)));
-      if (game.phase === "playing") commitGame(playCard(game, botCard(game).id));
-    }, game.phase === "playing" ? 1500 : 850);
-    return () => window.clearTimeout(timer);
-    // game is intentionally the state-machine trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game]);
+  }, [game, canDrive, commitGame]);
 
   const startSolo = () => {
     setRoom(null);
+    setPlayerId("");
+    versionRef.current = 0;
     setGame(createGame(createPlayers([name.trim() || "Du"])));
     setScreen("game");
   };
@@ -102,6 +174,8 @@ export default function App() {
     setBusy(true); setError("");
     try {
       const result = await createRoom(name);
+      versionRef.current = result.room.version;
+      changedAtRef.current = Date.now();
       setRoom(result.room); setPlayerId(result.playerId); setScreen("lobby");
     } catch (reason) { setError((reason as Error).message); }
     finally { setBusy(false); }
@@ -111,6 +185,8 @@ export default function App() {
     setBusy(true); setError("");
     try {
       const result = await joinRoom(code, name);
+      versionRef.current = result.room.version;
+      changedAtRef.current = Date.now();
       setRoom(result.room); setPlayerId(result.playerId); setScreen("lobby");
     } catch (reason) { setError((reason as Error).message); }
     finally { setBusy(false); }
@@ -127,6 +203,8 @@ export default function App() {
   };
 
   const leave = () => {
+    versionRef.current = 0;
+    changedAtRef.current = Date.now();
     setGame(null); setRoom(null); setPlayerId(""); setSelected([]); setError(""); setScreen("home");
   };
 
@@ -209,16 +287,30 @@ function SoloSetup({ name, onName, onStart }: { name: string; onName: (value: st
 }
 
 function OnlineSetup(props: { name: string; code: string; busy: boolean; error: string; onName: (v: string) => void; onCode: (v: string) => void; onCreate: () => void; onJoin: () => void }) {
+  // Kom du hit via en invitasjonslenke, er «Bli med» det du vil trykke på.
+  const [invited] = useState(() => props.code.length === 5);
+  const ready = props.busy || !props.name.trim();
   return (
     <section className="panel setup-panel">
       <p className="eyebrow">Spill med venner</p>
-      <h1>Samle bordet</h1>
-      <p className="muted">Alle åpner appen på sin mobil. Én lager rommet, resten skriver inn koden.</p>
+      <h1>{invited ? "Du er invitert" : "Samle bordet"}</h1>
+      <p className="muted">{invited ? `Skriv navnet ditt, så er du inne i rom ${props.code}.` : "Alle åpner appen på sin mobil. Én lager rommet, resten får lenken."}</p>
       <label>Navnet ditt<input value={props.name} onChange={(e) => props.onName(e.target.value)} maxLength={18} placeholder="For eksempel Ole" autoComplete="nickname" /></label>
-      <button className="primary-cta" disabled={props.busy || !props.name.trim()} onClick={props.onCreate}>Lag nytt rom</button>
-      <div className="divider"><span>eller</span></div>
-      <label>Romkode<input className="code-input" value={props.code} onChange={(e) => props.onCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} maxLength={5} placeholder="AB123" autoCapitalize="characters" /></label>
-      <button className="outline-cta" disabled={props.busy || props.code.length !== 5 || !props.name.trim()} onClick={props.onJoin}>Bli med</button>
+      {invited ? (
+        <>
+          <label>Romkode<input className="code-input" value={props.code} onChange={(e) => props.onCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} maxLength={5} placeholder="AB123" autoCapitalize="characters" /></label>
+          <button className="primary-cta" disabled={ready || props.code.length !== 5} onClick={props.onJoin}>Bli med</button>
+          <div className="divider"><span>eller</span></div>
+          <button className="outline-cta" disabled={ready} onClick={props.onCreate}>Lag nytt rom</button>
+        </>
+      ) : (
+        <>
+          <button className="primary-cta" disabled={ready} onClick={props.onCreate}>Lag nytt rom</button>
+          <div className="divider"><span>eller</span></div>
+          <label>Romkode<input className="code-input" value={props.code} onChange={(e) => props.onCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} maxLength={5} placeholder="AB123" autoCapitalize="characters" /></label>
+          <button className="outline-cta" disabled={ready || props.code.length !== 5} onClick={props.onJoin}>Bli med</button>
+        </>
+      )}
       {props.error && <p className="error-message">{props.error}</p>}
     </section>
   );
@@ -226,12 +318,34 @@ function OnlineSetup(props: { name: string; code: string; busy: boolean; error: 
 
 function Lobby({ room, playerId, onStart }: { room: Room; playerId: string; onStart: () => void }) {
   const isHost = room.hostId === playerId;
+  const [copied, setCopied] = useState("");
+  const link = inviteLink(room.code);
+
+  const flash = (label: string) => {
+    setCopied(label);
+    window.setTimeout(() => setCopied(""), 2000);
+  };
+
+  const share = async () => {
+    // Del-arket på mobil er raskeste vei inn i rommet for vennene.
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Amerikaneren", text: `Bli med i rommet ${room.code}`, url: link });
+        return;
+      } catch { /* avbrutt – fall tilbake til kopiering */ }
+    }
+    try { await navigator.clipboard?.writeText(link); flash("link"); } catch { /* ingen utklippstavle */ }
+  };
+
   return (
     <section className="panel lobby-panel">
       <p className="eyebrow">Rommet er klart</p>
       <h1 className="room-code">{room.code}</h1>
-      <button className="copy-button" onClick={() => void navigator.clipboard?.writeText(room.code)}>Kopier kode</button>
-      <p className="muted">Del koden med de du vil spille med.</p>
+      <div className="share-row">
+        <button className="primary-cta share-cta" onClick={() => void share()}>{copied === "link" ? "Lenke kopiert ✓" : "Del invitasjon"}</button>
+        <button className="copy-button" onClick={() => { void navigator.clipboard?.writeText(room.code); flash("code"); }}>{copied === "code" ? "Kode kopiert ✓" : "Kopier bare koden"}</button>
+      </div>
+      <p className="muted">Send lenken – vennene dine kommer rett inn i rommet.</p>
       <div className="player-list">
         {room.players.map((player, index) => <div className="lobby-player" key={player.id}><span>{index + 1}</span><b>{player.name}</b>{player.id === room.hostId && <small>Vert</small>}<i>✓</i></div>)}
         {Array.from({ length: 4 - room.players.length }, (_, i) => <div className="lobby-player empty" key={i}><span>{room.players.length + i + 1}</span><b>Venter…</b></div>)}
@@ -409,7 +523,7 @@ function AnimatedHand(props: {
   }, [props.cards]);
 
   return (
-    <div className="hand" role="list" aria-label="Kortene dine">
+    <div className="hand" role="list" aria-label="Kortene dine" style={{ "--hand-count": Math.max(props.cards.length, 2) } as CSSProperties}>
       {props.cards.map((card) => {
         const playable = props.canPlay && props.playable.has(card.id);
         return (

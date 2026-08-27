@@ -1,6 +1,6 @@
 # Amerikaneren
 
-En mobil-først app for det norske kortspillet Amerikaneren. Spill alene mot tre bots, eller opprett et Netlify-rom og inviter venner med en femtegns kode.
+En mobil-først app for det norske kortspillet Amerikaneren. Spill alene mot tre bots, eller opprett et Netlify-rom og inviter venner med en delbar lenke.
 
 ## Lokal utvikling
 
@@ -20,6 +20,17 @@ npm run build
 ```
 
 Netlify-oppsettet ligger i `netlify.toml`. Rom lagres i Netlify Blobs gjennom funksjonen i `netlify/functions/room.ts`.
+
+## Slik synkroniseres onlinerom
+
+Hver romtilstand har et `version`-tall som teller oppover for hver endring.
+
+- Klienten henter rommet med long-polling (`?code=...&since=<version>`). Funksjonen holder svaret åpent til versjonen endrer seg, eller i seks sekunder, slik at trekk kommer fram med én gang.
+- Tilstand med lavere versjon enn den vi allerede viser blir forkastet, så et sent svar kan aldri overskrive et ferskt trekk.
+- Lagring sender med `baseVersion`. Skriver to spillere samtidig, beholder serveren sin versjon og sender den tilbake.
+- Bare verten kjører bots og rydder stikk. Blir verten borte i åtte sekunder, tar en annen spiller over.
+
+Vennene dine kommer rett inn i rommet med lenken `/?rom=KODE`.
 
 ## iPhone og iPad
 

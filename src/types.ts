@@ -77,5 +77,6 @@ export interface Room {
   hostId: string;
   players: RoomPlayer[];
   game: GameState | null;
+  version: number;
   updatedAt: number;
 }
