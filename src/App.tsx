@@ -34,7 +34,7 @@ const NAME_KEY = "amerikaneren-navn";
 /** Hvor lenge vi venter på verten før en annen spiller driver botene videre. */
 const HOST_TIMEOUT = 8000;
 const COLLECT_DELAY = 1700;
-const DEAL_DELAY = 1450;
+const DEAL_DELAY = 2100;
 const BOT_DELAY = { playing: 850, other: 550 };
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -541,7 +541,7 @@ function DealTransition({ round }: { round: number }) {
         <span className="deal-stack" />
         <span className="shuffle-packet shuffle-left" />
         <span className="shuffle-packet shuffle-right" />
-        {Array.from({ length: 16 }, (_, index) => (
+        {Array.from({ length: 8 }, (_, index) => (
           <span
             className={`deal-card to-${seats[index % seats.length]}`}
             style={{ "--deal-index": index } as CSSProperties}
