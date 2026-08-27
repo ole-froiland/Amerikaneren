@@ -491,7 +491,7 @@ function GameTable(props: {
 
         {game.phase !== "scoring" && (
           <div className="hand-zone">
-            <div className={`hand-meta ${game.pendingWinner === ownIndex ? "won-trick" : ""}`}><span><b className="seat-order">1</b><PlayerAvatar player={game.players[ownIndex]} size="tiny" />{game.players[ownIndex].name}{teamRole(ownIndex) && <em>{teamRole(ownIndex) === "contract" ? "Kontraktlag" : "Motlag"}</em>}{ownTurn && <i>{turnLabel}</i>}</span><strong>{game.players[ownIndex].tricks} <small>stikk</small></strong><small>{game.hands[ownIndex].length} kort</small></div>
+            <div className={`hand-meta ${game.pendingWinner === ownIndex ? "won-trick" : ""}`}><span><b className="seat-order">1</b><PlayerAvatar player={game.players[ownIndex]} size="tiny" />{game.players[ownIndex].name}{teamRole(ownIndex) && <em>{teamRole(ownIndex) === "contract" ? "Kontraktlag" : "Motlag"}</em>}{ownTurn && <i>{turnLabel}</i>}</span><strong>{game.players[ownIndex].tricks} <small>stikk</small></strong><small className="hand-count">{game.hands[ownIndex].length} kort <span>· sveip</span></small></div>
             <AnimatedHand
               cards={game.hands[ownIndex]}
               selected={props.selected}
@@ -594,7 +594,7 @@ function AnimatedHand(props: {
   }, [props.cards]);
 
   return (
-    <div className="hand" role="list" aria-label="Kortene dine" style={{ "--hand-count": Math.max(props.cards.length, 2) } as CSSProperties}>
+    <div className="hand" role="list" aria-label="Kortene dine. Sveip sidelengs for å se alle." style={{ "--hand-count": Math.max(props.cards.length, 2) } as CSSProperties}>
       {props.cards.map((card) => {
         const playable = props.canPlay && props.playable.has(card.id);
         return (
