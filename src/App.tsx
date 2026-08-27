@@ -34,6 +34,7 @@ const NAME_KEY = "amerikaneren-navn";
 /** Hvor lenge vi venter på verten før en annen spiller driver botene videre. */
 const HOST_TIMEOUT = 8000;
 const COLLECT_DELAY = 1700;
+const DEAL_DELAY = 1600;
 const BOT_DELAY = { playing: 850, other: 550 };
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -53,6 +54,7 @@ export default function App() {
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [dealingRound, setDealingRound] = useState<number | null>(null);
   const roomCode = room?.code;
 
   // Versjonen av romtilstanden vi viser. Alt som kommer inn med lavere versjon
@@ -60,15 +62,26 @@ export default function App() {
   const versionRef = useRef(0);
   // Settes så snart vi er inne i et rom (opprett/bli med/oppdatering).
   const changedAtRef = useRef(0);
+  const gameRef = useRef<GameState | null>(null);
   const roomRef = useRef<Room | null>(null);
   const playerIdRef = useRef("");
   const queueRef = useRef<Promise<void>>(Promise.resolve());
+  const dealTimerRef = useRef(0);
 
   useEffect(() => { roomRef.current = room; }, [room]);
   useEffect(() => { playerIdRef.current = playerId; }, [playerId]);
   useEffect(() => {
     try { window.localStorage.setItem(NAME_KEY, name); } catch { /* privat modus */ }
   }, [name]);
+
+  const beginDeal = useCallback((round: number) => {
+    window.clearTimeout(dealTimerRef.current);
+    setDealingRound(round);
+    const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 450 : DEAL_DELAY;
+    dealTimerRef.current = window.setTimeout(() => setDealingRound(null), delay);
+  }, []);
+
+  useEffect(() => () => window.clearTimeout(dealTimerRef.current), []);
 
   const ownIndex = useMemo(() => {
     if (!game) return 0;
@@ -86,12 +99,18 @@ export default function App() {
     changedAtRef.current = Date.now();
     setRoom(fresh);
     if (fresh.game) {
+      const previous = gameRef.current;
+      if (!previous || fresh.game.round > previous.round) beginDeal(fresh.game.round);
+      gameRef.current = fresh.game;
       setGame(fresh.game);
       setScreen("game");
     }
-  }, []);
+  }, [beginDeal]);
 
-  const commitGame = useCallback((next: GameState) => {
+  const commitGame = useCallback((next: GameState, forceDeal = false) => {
+    const previous = gameRef.current;
+    if (forceDeal || !previous || next.round > previous.round) beginDeal(next.round);
+    gameRef.current = next;
     setGame(next);
     setSelected([]);
     const current = roomRef.current;
@@ -115,7 +134,7 @@ export default function App() {
         setError((reason as Error).message);
       }
     });
-  }, [applyRoom]);
+  }, [applyRoom, beginDeal]);
 
   /** Bare verten kjører bots og rydder stikk – ellers ville alle fire spilt samme trekk. */
   const canDrive = useCallback(() => {
@@ -147,7 +166,7 @@ export default function App() {
   }, [roomCode, screen, applyRoom]);
 
   useEffect(() => {
-    if (!game || game.phase === "scoring") return;
+    if (!game || dealingRound !== null || game.phase === "scoring") return;
     const collecting = game.phase === "collecting";
     const botTurn = !collecting && Boolean(game.players[game.turn]?.isBot);
     if (!collecting && !botTurn) return;
@@ -162,13 +181,16 @@ export default function App() {
     };
     timer = window.setTimeout(act, collecting ? COLLECT_DELAY : game.phase === "playing" ? BOT_DELAY.playing : BOT_DELAY.other);
     return () => window.clearTimeout(timer);
-  }, [game, canDrive, commitGame]);
+  }, [game, dealingRound, canDrive, commitGame]);
 
   const startSolo = () => {
     setRoom(null);
     setPlayerId("");
     versionRef.current = 0;
-    setGame(createGame(createPlayers([name.trim() || "Du"])));
+    const next = createGame(createPlayers([name.trim() || "Du"]));
+    gameRef.current = next;
+    beginDeal(next.round);
+    setGame(next);
     setScreen("game");
   };
 
@@ -200,13 +222,16 @@ export default function App() {
       ...player,
       id: room.players[index]?.id ?? player.id,
     }));
-    commitGame(createGame(players));
+    commitGame(createGame(players), true);
     setScreen("game");
   };
 
   const leave = () => {
+    window.clearTimeout(dealTimerRef.current);
     versionRef.current = 0;
     changedAtRef.current = Date.now();
+    gameRef.current = null;
+    setDealingRound(null);
     setGame(null); setRoom(null); setPlayerId(""); setSelected([]); setError(""); setScreen("home");
   };
 
@@ -235,6 +260,7 @@ export default function App() {
           game={game}
           ownIndex={ownIndex}
           selected={selected}
+          dealing={dealingRound === game.round}
           isOnline={Boolean(room)}
           roomCode={room?.code}
           onSelect={(id) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : current.length < 4 ? [...current, id] : current)}
@@ -249,7 +275,7 @@ export default function App() {
             return true;
           }}
           onRestart={room
-            ? () => commitGame(createGame(game.players.map((player) => ({ ...player, score: 0, tricks: 0 }))))
+            ? () => commitGame(createGame(game.players.map((player) => ({ ...player, score: 0, tricks: 0 }))), true)
             : startSolo}
         />
       )}
@@ -381,7 +407,7 @@ function Rules({ onPlay }: { onPlay: () => void }) {
 }
 
 function GameTable(props: {
-  game: GameState; ownIndex: number; selected: string[]; isOnline: boolean; roomCode?: string;
+  game: GameState; ownIndex: number; selected: string[]; dealing: boolean; isOnline: boolean; roomCode?: string;
   onSelect: (id: string) => void; onBid: (value: number | "american" | "pass") => void; onExchange: () => void;
   onTrump: (suit: Suit) => void; onPlay: (id: string) => void; onNext: () => void; onRestart: () => void;
   onClaim: () => boolean;
@@ -500,8 +526,27 @@ function GameTable(props: {
             <div className="last-trick-cards">{lastTrick.map((played) => <div key={played.card.id}><PlayingCard card={played.card} compact /><small>{game.players[played.playerIndex].name}</small></div>)}</div>
           </div>
         )}
+
+        {props.dealing && <DealTransition round={game.round} />}
       </div>
     </section>
+  );
+}
+
+function DealTransition({ round }: { round: number }) {
+  return (
+    <div className="deal-transition" role="status" aria-label={`Stokker og deler kort til runde ${round}`}>
+      <div className="deal-stage" aria-hidden="true">
+        <span className="deal-stack" />
+        <span className="deal-card shuffle-left" />
+        <span className="deal-card shuffle-right" />
+        <span className="deal-card deal-north" />
+        <span className="deal-card deal-west" />
+        <span className="deal-card deal-east" />
+        <span className="deal-card deal-south" />
+      </div>
+      <p><b>Stokker og deler</b><span>Runde {round}</span></p>
+    </div>
   );
 }
 
