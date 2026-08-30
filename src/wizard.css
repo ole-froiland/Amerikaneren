@@ -15,12 +15,17 @@
 }
 
 .wizard-back {
-  padding: 4px 0;
+  padding: 6px 12px;
   color: #46584f;
+  background: #f2f5f2;
+  border: 1px solid #e0e7e2;
+  border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
+
+.wizard-back:hover { background: #e8ede9; }
 
 .wizard-count {
   color: #8a978f;
@@ -171,3 +176,17 @@
 /* Plassene i lobbyen som fylles av bots. */
 .lobby-player.bot { opacity: .75; }
 .lobby-player.bot > span { background: #6f8a7d; }
+
+/* Lenken til reglene, på første steg. */
+.wizard-rules {
+  margin-top: 18px;
+  padding: 6px 0;
+  background: transparent;
+  border: 0;
+  color: #46584f;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}

@@ -95,27 +95,29 @@ export default function StartWizard(props: {
 
   if (step === "modus") {
     return (
-      <section className="home-screen">
-        <div className="hero-copy">
-          <p className="eyebrow">Det klassiske stikkspillet</p>
-          <h1>Fire rundt bordet.<br /><em>Ett bud på seier.</em></h1>
-          <p className="intro">By, finn makkeren din og spill dere til 52 poeng. Enkelt å starte. Vanskelig å legge fra seg.</p>
-          <div className="home-actions">
-            <button className="primary-button" onClick={() => { update({ mode: "alene" }); forward(); }}>
-              <span className="button-icon">♠</span><span>Spill alene<small>du mot smarte bots</small></span><b>→</b>
-            </button>
-            <button className="secondary-button" onClick={() => { update({ mode: "venner" }); forward(); }}>
-              <span className="button-icon">♣</span><span>Spill med venner<small>del en lenke, spill sammen</small></span><b>→</b>
-            </button>
-          </div>
-          <button className="rules-link" onClick={props.onRules}>Hvordan spiller man?</button>
+      <section className="panel setup-panel wizard-panel">
+        {head}
+        <h1>Hvordan vil du spille?</h1>
+        <p className="muted">Ett valg om gangen, så er du ved bordet.</p>
+        <div className="choice-grid">
+          <button
+            className={choice.mode === "alene" ? "chosen" : ""}
+            aria-pressed={choice.mode === "alene"}
+            onClick={() => { update({ mode: "alene" }); forward(); }}
+          >
+            <b>Spill alene</b>
+            <small>Du mot smarte bots. Kortene deles ut med en gang.</small>
+          </button>
+          <button
+            className={choice.mode === "venner" ? "chosen" : ""}
+            aria-pressed={choice.mode === "venner"}
+            onClick={() => { update({ mode: "venner" }); forward(); }}
+          >
+            <b>Spill med venner</b>
+            <small>Del en lenke. Alle spiller fra sin egen mobil, og ledige plasser tar bots.</small>
+          </button>
         </div>
-        <div className="card-fan" aria-hidden="true">
-          <div className="hero-card card-one"><span>A</span><span>♠</span></div>
-          <div className="hero-card card-two red"><span>K</span><span>♥</span></div>
-          <div className="hero-card card-three"><span>Q</span><span>♣</span></div>
-        </div>
-        <p className="home-note">12 kort · 4 i potten · Først til 52</p>
+        {props.onRules && <button className="wizard-rules" onClick={props.onRules}>Hvordan spiller man?</button>}
       </section>
     );
   }
