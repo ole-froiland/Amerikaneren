@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import StartWizard from "./StartWizard.tsx";
+import type { StartRequest } from "./StartWizard.tsx";
 import { createRoom, inviteLink, joinRoom, pollRoom, saveRoomGame } from "./api.ts";
+import { MAX_HUMANS, loadChoice, saveChoice } from "./setup.ts";
+import type { SetupChoice } from "./setup.ts";
 import {
   RANK_NAME,
   SUITS,
@@ -28,7 +32,7 @@ import {
 } from "./game.ts";
 import type { Card, GameState, Room, Suit } from "./types.ts";
 
-type Screen = "home" | "solo" | "online" | "lobby" | "game" | "rules";
+type Screen = "home" | "lobby" | "game" | "rules";
 
 const NAME_KEY = "amerikaneren-navn";
 /** Hvor lenge vi venter på verten før en annen spiller driver botene videre. */
@@ -45,12 +49,13 @@ const storedName = () => {
 };
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>(() => inviteCode() ? "online" : "home");
+  const [screen, setScreen] = useState<Screen>("home");
   const [game, setGame] = useState<GameState | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [playerId, setPlayerId] = useState("");
   const [name, setName] = useState(storedName);
-  const [code, setCode] = useState(inviteCode);
+  const [choice, setChoice] = useState<SetupChoice>(loadChoice);
+  const [invited, setInvited] = useState(inviteCode);
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -183,21 +188,21 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [game, dealingRound, canDrive, commitGame]);
 
-  const startSolo = () => {
+  const startSolo = (player = name) => {
     setRoom(null);
     setPlayerId("");
     versionRef.current = 0;
-    const next = createGame(createPlayers([name.trim() || "Du"]));
+    const next = createGame(createPlayers([player.trim() || "Du"]));
     gameRef.current = next;
     beginDeal(next.round);
     setGame(next);
     setScreen("game");
   };
 
-  const handleCreate = async () => {
+  const handleCreate = async (player: string) => {
     setBusy(true); setError("");
     try {
-      const result = await createRoom(name);
+      const result = await createRoom(player);
       versionRef.current = result.room.version;
       changedAtRef.current = Date.now();
       setRoom(result.room); setPlayerId(result.playerId); setScreen("lobby");
@@ -205,15 +210,31 @@ export default function App() {
     finally { setBusy(false); }
   };
 
-  const handleJoin = async () => {
+  const handleJoin = async (roomCodeToJoin: string, player: string) => {
     setBusy(true); setError("");
     try {
-      const result = await joinRoom(code, name);
+      const result = await joinRoom(roomCodeToJoin, player);
       versionRef.current = result.room.version;
       changedAtRef.current = Date.now();
       setRoom(result.room); setPlayerId(result.playerId); setScreen("lobby");
     } catch (reason) { setError((reason as Error).message); }
     finally { setBusy(false); }
+  };
+
+  /** Siste steg i veiviseren: start, lag rom, eller gå videre til Bakrommet. */
+  const handleStart = (request: StartRequest) => {
+    setChoice(request.choice);
+    saveChoice(request.choice);
+    setName(request.name);
+    if (request.choice.game === "bakrommet") {
+      // Bakrommet har sin egen adresse, så pokerkoden lastes først når man skal dit.
+      try { window.localStorage.setItem(NAME_KEY, request.name); } catch { /* privat modus */ }
+      window.location.assign("/poker?start=1");
+      return;
+    }
+    if (request.action === "alene") startSolo(request.name);
+    else if (request.action === "lag-rom") void handleCreate(request.name);
+    else void handleJoin(request.code, request.name);
   };
 
   const startRoomGame = () => {
@@ -232,6 +253,8 @@ export default function App() {
     changedAtRef.current = Date.now();
     gameRef.current = null;
     setDealingRound(null);
+    // Invitasjonen er brukt opp – neste gang starter veiviseren på første steg.
+    setInvited("");
     setGame(null); setRoom(null); setPlayerId(""); setSelected([]); setError(""); setScreen("home");
   };
 
@@ -245,16 +268,21 @@ export default function App() {
         {screen !== "home" && <button className="quiet-button" onClick={leave}>Avslutt</button>}
       </header>
 
-      {screen === "home" && <Home onSolo={() => setScreen("solo")} onOnline={() => setScreen("online")} onRules={() => setScreen("rules")} />}
-      {screen === "solo" && <SoloSetup name={name} onName={setName} onStart={startSolo} />}
-      {screen === "online" && (
-        <OnlineSetup
-          name={name} code={code} busy={busy} error={error}
-          onName={setName} onCode={setCode} onCreate={handleCreate} onJoin={handleJoin}
+      {screen === "home" && (
+        <StartWizard
+          initial={choice}
+          initialName={name}
+          invitedCode={invited}
+          busy={busy}
+          error={error}
+          onChoice={(next) => { setChoice(next); saveChoice(next); }}
+          onName={setName}
+          onStart={handleStart}
+          onRules={() => setScreen("rules")}
         />
       )}
-      {screen === "lobby" && room && <Lobby room={room} playerId={playerId} onStart={startRoomGame} />}
-      {screen === "rules" && <Rules onPlay={startSolo} />}
+      {screen === "lobby" && room && <Lobby room={room} playerId={playerId} seats={choice.humans} onStart={startRoomGame} />}
+      {screen === "rules" && <Rules onPlay={() => startSolo()} />}
       {screen === "game" && game && (
         <GameTable
           game={game}
@@ -276,7 +304,7 @@ export default function App() {
           }}
           onRestart={room
             ? () => commitGame(createGame(game.players.map((player) => ({ ...player, score: 0, tricks: 0 }))), true)
-            : startSolo}
+            : () => startSolo()}
         />
       )}
       <div className="sr-status" role="status" aria-live="polite">{error}</div>
@@ -284,73 +312,10 @@ export default function App() {
   );
 }
 
-function Home({ onSolo, onOnline, onRules }: { onSolo: () => void; onOnline: () => void; onRules: () => void }) {
-  return (
-    <section className="home-screen">
-      <div className="hero-copy">
-        <p className="eyebrow">Det klassiske stikkspillet</p>
-        <h1>Fire rundt bordet.<br /><em>Ett bud på seier.</em></h1>
-        <p className="intro">By, finn makkeren din og spill dere til 52 poeng. Enkelt å starte. Vanskelig å legge fra seg.</p>
-        <div className="home-actions">
-          <button className="primary-button" onClick={onSolo}><span className="button-icon">♠</span><span>Spill alene<small>mot tre smarte bots</small></span><b>→</b></button>
-          <button className="secondary-button" onClick={onOnline}><span className="button-icon">♣</span><span>Spill med venner<small>opprett eller bli med i rom</small></span><b>→</b></button>
-        </div>
-        <button className="rules-link" onClick={onRules}>Hvordan spiller man?</button>
-      </div>
-      <div className="card-fan" aria-hidden="true">
-        <div className="hero-card card-one"><span>A</span><span>♠</span></div>
-        <div className="hero-card card-two red"><span>K</span><span>♥</span></div>
-        <div className="hero-card card-three"><span>Q</span><span>♣</span></div>
-      </div>
-      <p className="home-note">12 kort · 4 i potten · Først til 52</p>
-    </section>
-  );
-}
-
-function SoloSetup({ name, onName, onStart }: { name: string; onName: (value: string) => void; onStart: () => void }) {
-  return (
-    <section className="panel setup-panel solo-panel">
-      <p className="eyebrow">Spill mot bots</p>
-      <h1>Hva heter du?</h1>
-      <p className="muted">Du møter Trump, Putin og Kim Jong-un rundt bordet.</p>
-      <label>Navnet ditt<input value={name} onChange={(event) => onName(event.target.value)} maxLength={18} placeholder="For eksempel Ole" autoComplete="nickname" /></label>
-      <button className="primary-cta" onClick={onStart}>Sett deg ved bordet</button>
-    </section>
-  );
-}
-
-function OnlineSetup(props: { name: string; code: string; busy: boolean; error: string; onName: (v: string) => void; onCode: (v: string) => void; onCreate: () => void; onJoin: () => void }) {
-  // Kom du hit via en invitasjonslenke, er «Bli med» det du vil trykke på.
-  const [invited] = useState(() => props.code.length === 5);
-  const ready = props.busy || !props.name.trim();
-  return (
-    <section className="panel setup-panel">
-      <p className="eyebrow">Spill med venner</p>
-      <h1>{invited ? "Du er invitert" : "Samle bordet"}</h1>
-      <p className="muted">{invited ? `Skriv navnet ditt, så er du inne i rom ${props.code}.` : "Alle åpner appen på sin mobil. Én lager rommet, resten får lenken."}</p>
-      <label>Navnet ditt<input value={props.name} onChange={(e) => props.onName(e.target.value)} maxLength={18} placeholder="For eksempel Ole" autoComplete="nickname" /></label>
-      {invited ? (
-        <>
-          <label>Romkode<input className="code-input" value={props.code} onChange={(e) => props.onCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} maxLength={5} placeholder="AB123" autoCapitalize="characters" /></label>
-          <button className="primary-cta" disabled={ready || props.code.length !== 5} onClick={props.onJoin}>Bli med</button>
-          <div className="divider"><span>eller</span></div>
-          <button className="outline-cta" disabled={ready} onClick={props.onCreate}>Lag nytt rom</button>
-        </>
-      ) : (
-        <>
-          <button className="primary-cta" disabled={ready} onClick={props.onCreate}>Lag nytt rom</button>
-          <div className="divider"><span>eller</span></div>
-          <label>Romkode<input className="code-input" value={props.code} onChange={(e) => props.onCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} maxLength={5} placeholder="AB123" autoCapitalize="characters" /></label>
-          <button className="outline-cta" disabled={ready || props.code.length !== 5} onClick={props.onJoin}>Bli med</button>
-        </>
-      )}
-      {props.error && <p className="error-message">{props.error}</p>}
-    </section>
-  );
-}
-
-function Lobby({ room, playerId, onStart }: { room: Room; playerId: string; onStart: () => void }) {
+function Lobby({ room, playerId, seats, onStart }: { room: Room; playerId: string; seats: number; onStart: () => void }) {
   const isHost = room.hostId === playerId;
+  // Verten valgte hvor mange menneskeplasser bordet skal ha. Resten er bots.
+  const humans = Math.min(MAX_HUMANS, Math.max(seats, room.players.length));
   const [copied, setCopied] = useState("");
   const link = inviteLink(room.code);
 
@@ -381,10 +346,18 @@ function Lobby({ room, playerId, onStart }: { room: Room; playerId: string; onSt
       <p className="muted">Send lenken – vennene dine kommer rett inn i rommet.</p>
       <div className="player-list">
         {room.players.map((player, index) => <div className="lobby-player" key={player.id}><span>{index + 1}</span><b>{player.name}</b>{player.id === room.hostId && <small>Vert</small>}<i>✓</i></div>)}
-        {Array.from({ length: 4 - room.players.length }, (_, i) => <div className="lobby-player empty" key={i}><span>{room.players.length + i + 1}</span><b>Venter…</b></div>)}
+        {Array.from({ length: humans - room.players.length }, (_, i) => <div className="lobby-player empty" key={`venter-${i}`}><span>{room.players.length + i + 1}</span><b>Venter…</b></div>)}
+        {Array.from({ length: MAX_HUMANS - humans }, (_, i) => <div className="lobby-player bot" key={`bot-${i}`}><span>{humans + i + 1}</span><b>Bot</b></div>)}
       </div>
       {isHost ? (
-        <><button className="primary-cta" disabled={room.players.length < 2} onClick={onStart}>Start spill</button><p className="tiny">Ledige plasser fylles av bots.</p></>
+        <>
+          <button className="primary-cta" disabled={room.players.length < 2} onClick={onStart}>Start spill</button>
+          <p className="tiny">
+            {room.players.length < humans
+              ? `Venter på ${humans - room.players.length} til. Du kan starte når som helst – ledige plasser fylles av bots.`
+              : "Ledige plasser fylles av bots."}
+          </p>
+        </>
       ) : <p className="waiting"><span /> Venter på at verten starter</p>}
     </section>
   );

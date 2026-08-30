@@ -1,6 +1,17 @@
 # Amerikaneren
 
-En mobil-først app for det norske kortspillet Amerikaneren. Spill alene mot tre bots, eller opprett et Netlify-rom og inviter venner med en delbar lenke.
+En mobil-først app for det norske kortspillet Amerikaneren, med pokerbordet Bakrommet ved siden av. Spill alene mot bots, eller opprett et Netlify-rom og inviter venner med en delbar lenke.
+
+## Oppsettet
+
+Forsiden er en veiviser med ett valg om gangen: alene eller med venner, hvilket spill, hvor mange
+spillere, hvor tøffe botene skal være, om coachen skal være på – og til slutt start eller vent på
+venner i lobbyen. Bare stegene som gjelder for valget ditt vises: Amerikaneren spør om antall bare
+når du spiller med venner, og nivå og coach hører til Bakrommet.
+
+Reglene ligger i `stepsFor()` i `src/setup.ts` og er testet i `src/setup.test.ts`. Selve skallet er
+`src/StartWizard.tsx`, som både forsiden og `/poker` bruker – pokersiden låser spillet og hopper over
+de to første stegene. Valgene huskes i localStorage.
 
 ## Lokal utvikling
 
@@ -35,6 +46,56 @@ Vennene dine kommer rett inn i rommet med lenken `/?rom=KODE`.
 ## Resten står
 
 Har du bare vinnerkort igjen, tar knappen «Resten står» hjem alle stikkene som er igjen på én gang. Kravet godtas bare når det holder uansett hvordan de andre spiller: hvert av dine trumfkort må være høyere enn alle deres, du må ha nok trumf til å tømme den som sitter med flest, og hvert sidekort må være høyest igjen i fargen. Står det ikke, rister knappen og ingenting skjer.
+
+## Bakrommet (pokerbordet)
+
+På `/poker` ligger et Texas hold'em-bord. Ingen ekte penger: alle får 1000 sjetonger, blindene er
+10/20, og du velger 1–5 motstandere. Velger du Bakrommet i veiviseren, sendes du hit med `?start=1`
+og bordet deles ut med en gang – koden for pokerbordet lastes fortsatt først når adressen åpnes.
+
+Dealerknappen, lilleblind og storeblind flyttes ett sete for hver hånd. Flop, turn og river deles ut
+med tre, ett og ett kort, med en budrunde mellom hver. Du kan kaste, sjekke, syne, høyne eller gå all-in.
+Sidepotter regnes ut når noen er all-in for mindre enn de andre.
+
+Botene har tre nivåer. Lette bots syner nesten alt og høyner sjelden, vanskelige legger ned søppel og
+presser hardt — målt over mange hender kaster de rundt fire ganger så ofte som de lette. Profilene ligger
+i `DIFFICULTY` i `src/poker.ts`.
+
+Øverst til høyre står sjansen for at du vinner hånden, regnet ut med Monte Carlo mot tilfeldige
+motstanderhender (`equity()`). Den treffer standard oddstabeller innenfor ett prosentpoeng og tar rundt
+30 ms, så den regnes bare når kortene faktisk endrer seg. Knappen ved siden av skjuler den, og valget huskes.
+
+Øverst står også hvor mye du er opp eller ned siden du satte deg.
+
+Etter showdown rangeres hendene fra best til svakest med plassnummer, slik at det er tydelig hvem som
+hadde hva — også når to hender har samme navn og bare sidekortet skiller dem. Hendene til dem som kastet
+seg regnes ut mot det ferdige bordet og vises dempet med «Kastet», så du ser om du la ned vinnerhånden.
+Det krever at bordet rakk å bli ferdig; sluttet hånden på floppen, finnes det ingen fasit.
+
+Vant noen fordi alle andre kastet seg, viser de ikke kortene — da står det ingen påstand om hvem som
+«ville vunnet», for det vet vi ikke. Kastede kort kan skrus av i oppsettet om du vil spille uten fasit.
+
+## Coach
+
+Skrus på i oppsettet. Etter hver hånd går den gjennom dine egne trekk og sier om prisen var riktig.
+
+Regnestykket er pott-odds mot vinnersjanse: syner du 20 i en pott på 60, betaler du 20 for å vinne 80,
+og trenger 25 % for å gå i null. Er vinnersjansen din høyere, var synet riktig.
+
+**Dommen bygger utelukkende på det som var kjent i øyeblikket** — kortene, prisen og hvor mange som var
+med. Om hånden endte godt eller dårlig er uten betydning. En all-in med 5 % sjanse er en tabbe selv om
+den traff, og et riktig priset syn er riktig selv om du tapte det. `coachReview()` leser bare
+`state.review`, aldri resultatet, og testene låser oppførselen: samme trekk gir samme dom enten spilleren
+endte med 0 eller 5000 sjetonger.
+
+Bløffer straffes ikke i seg selv — de merkes bare som bløff. Først når innsatsen er stor og sjansen liten
+kalles det en tabbe.
+
+Sjansen antar at motstanderne har tilfeldige kort. Den vet ikke at en som høyner hardt sjelden har søppel,
+så den er litt optimistisk når noen presser deg.
+
+Motoren ligger i `src/poker.ts` og er rene funksjoner uten React, testet i `src/poker.test.ts`.
+Siden lastes først når adressen åpnes, så forsiden får ikke med seg koden.
 
 ## iPhone og iPad
 

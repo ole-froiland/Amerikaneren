@@ -1,0 +1,306 @@
+/**
+ * Veiviseren som fører deg fram til bordet: alene eller med venner, hvilket
+ * spill, hvor mange, hvor tøffe, coach – og til slutt start eller vent på venner.
+ *
+ * Ett steg om gangen, og bare de stegene som gjelder for valget ditt. Forsiden
+ * og Bakrommet bruker samme veiviser; /poker låser spillet og hopper over de to
+ * første stegene.
+ */
+import { useMemo, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import {
+  DIFFICULTY_HINT,
+  DIFFICULTY_NAME,
+  MAX_HUMANS,
+  MAX_OPPONENTS,
+  MIN_HUMANS,
+  MIN_OPPONENTS,
+  gameAvailable,
+  stepsFor,
+  summaryOf,
+} from "./setup.ts";
+import type { Difficulty, SetupChoice, SetupGame } from "./setup.ts";
+import "./wizard.css";
+
+export type SetupAction = "alene" | "lag-rom" | "bli-med";
+
+export interface StartRequest {
+  action: SetupAction;
+  choice: SetupChoice;
+  name: string;
+  code: string;
+}
+
+const cleanCode = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+
+const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, index) => from + index);
+
+/** Startvalget: et låst spill overstyrer, og en invitasjon betyr alltid venner. */
+function openingChoice(initial: SetupChoice, lockedGame: SetupGame | undefined, invited: boolean): SetupChoice {
+  if (lockedGame) return { ...initial, mode: "alene", game: lockedGame };
+  if (invited) return { ...initial, mode: "venner", game: "amerikaneren" };
+  return initial;
+}
+
+export default function StartWizard(props: {
+  initial: SetupChoice;
+  initialName: string;
+  /** Kom du inn på en invitasjonslenke, står koden her. */
+  invitedCode?: string;
+  lockedGame?: SetupGame;
+  intro?: ReactNode;
+  busy?: boolean;
+  error?: string;
+  onChoice?: (choice: SetupChoice) => void;
+  onName?: (name: string) => void;
+  onStart: (request: StartRequest) => void;
+  onRules?: () => void;
+}) {
+  const locked = Boolean(props.lockedGame);
+  const invited = cleanCode(props.invitedCode ?? "").length === 5;
+  const [choice, setChoice] = useState(() => openingChoice(props.initial, props.lockedGame, invited));
+  const [name, setName] = useState(props.initialName);
+  const [code, setCode] = useState(() => cleanCode(props.invitedCode ?? ""));
+  // Er du invitert, mangler du bare navnet – da åpner vi på siste steg.
+  const [index, setIndex] = useState(() => (
+    invited ? stepsFor(openingChoice(props.initial, props.lockedGame, invited), locked).length - 1 : 0
+  ));
+
+  const steps = useMemo(() => stepsFor(choice, locked), [choice, locked]);
+  const at = Math.min(index, steps.length - 1);
+  const step = steps[at];
+
+  const update = (patch: Partial<SetupChoice>) => {
+    const merged = { ...choice, ...patch };
+    // Bakrommet finnes ikke med venner. Bytter du modus, følger spillet med.
+    if (!gameAvailable(merged.mode, merged.game)) merged.game = "amerikaneren";
+    setChoice(merged);
+    props.onChoice?.(merged);
+  };
+
+  const forward = () => setIndex(at + 1);
+  const back = () => setIndex(Math.max(0, at - 1));
+  const rename = (value: string) => { setName(value); props.onName?.(value); };
+  const start = (action: SetupAction) => props.onStart({ action, choice, name, code });
+
+  const head = (
+    <div className="wizard-head">
+      {at > 0
+        ? <button className="wizard-back" onClick={back}>← Tilbake</button>
+        : <span />}
+      <span className="wizard-count">Steg {at + 1} av {steps.length}</span>
+    </div>
+  );
+  const first = at === 0 ? props.intro : null;
+
+  if (step === "modus") {
+    return (
+      <section className="home-screen">
+        <div className="hero-copy">
+          <p className="eyebrow">Det klassiske stikkspillet</p>
+          <h1>Fire rundt bordet.<br /><em>Ett bud på seier.</em></h1>
+          <p className="intro">By, finn makkeren din og spill dere til 52 poeng. Enkelt å starte. Vanskelig å legge fra seg.</p>
+          <div className="home-actions">
+            <button className="primary-button" onClick={() => { update({ mode: "alene" }); forward(); }}>
+              <span className="button-icon">♠</span><span>Spill alene<small>du mot smarte bots</small></span><b>→</b>
+            </button>
+            <button className="secondary-button" onClick={() => { update({ mode: "venner" }); forward(); }}>
+              <span className="button-icon">♣</span><span>Spill med venner<small>del en lenke, spill sammen</small></span><b>→</b>
+            </button>
+          </div>
+          <button className="rules-link" onClick={props.onRules}>Hvordan spiller man?</button>
+        </div>
+        <div className="card-fan" aria-hidden="true">
+          <div className="hero-card card-one"><span>A</span><span>♠</span></div>
+          <div className="hero-card card-two red"><span>K</span><span>♥</span></div>
+          <div className="hero-card card-three"><span>Q</span><span>♣</span></div>
+        </div>
+        <p className="home-note">12 kort · 4 i potten · Først til 52</p>
+      </section>
+    );
+  }
+
+  if (step === "spill") {
+    const openTable = gameAvailable(choice.mode, "bakrommet");
+    return (
+      <section className="panel setup-panel wizard-panel">
+        {head}
+        <h1>Hvilket bord?</h1>
+        <p className="muted">To spill i samme app. Du kan bytte når som helst.</p>
+        <div className="choice-grid">
+          <button
+            className={choice.game === "amerikaneren" ? "chosen" : ""}
+            aria-pressed={choice.game === "amerikaneren"}
+            onClick={() => { update({ game: "amerikaneren" }); forward(); }}
+          >
+            <b>Amerikaneren</b>
+            <small>Stikkspillet for fire. By, finn makkeren din og spill dere til 52 poeng.</small>
+          </button>
+          <button
+            className={choice.game === "bakrommet" ? "chosen" : ""}
+            aria-pressed={choice.game === "bakrommet"}
+            disabled={!openTable}
+            onClick={() => { update({ game: "bakrommet" }); forward(); }}
+          >
+            <b>Bakrommet</b>
+            <small>
+              {openTable
+                ? "Texas hold'em med falske sjetonger. Bots på tre nivåer, og en coach som ser deg i kortene."
+                : "Har ingen onlinerom ennå. Gå ett steg tilbake og velg «alene» for å sette deg her."}
+            </small>
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (step === "antall") {
+    const table = choice.game === "bakrommet";
+    const value = table ? choice.opponents : choice.humans;
+    const options = table ? range(MIN_OPPONENTS, MAX_OPPONENTS) : range(MIN_HUMANS, MAX_HUMANS);
+    return (
+      <section className="panel setup-panel wizard-panel">
+        {head}
+        {first}
+        <h1>{table ? "Hvor mange spiller du mot?" : "Hvor mange er dere?"}</h1>
+        <p className="muted">
+          {table
+            ? "Hver motstander er en bot. Færre spillere gir raskere hender."
+            : "Amerikaneren spilles alltid fire rundt bordet. Plassene dere ikke fyller, tar bots."}
+        </p>
+        <div className="count-grid" style={{ "--options": options.length } as CSSProperties}>
+          {options.map((count) => (
+            <button
+              key={count}
+              className={count === value ? "chosen" : ""}
+              aria-pressed={count === value}
+              onClick={() => { update(table ? { opponents: count } : { humans: count }); forward(); }}
+            >
+              <b>{count}</b>
+              <small>{table
+                ? (count === 1 ? "mot én" : "motstandere")
+                : (count === MAX_HUMANS ? "fullt bord" : `+ ${MAX_HUMANS - count} ${MAX_HUMANS - count === 1 ? "bot" : "bots"}`)}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (step === "niva") {
+    return (
+      <section className="panel setup-panel wizard-panel">
+        {head}
+        <h1>Hvor tøffe skal de være?</h1>
+        <p className="muted">Nivået gjelder alle botene rundt bordet.</p>
+        <div className="level-grid">
+          {(["lett", "middels", "vanskelig"] as Difficulty[]).map((option) => (
+            <button
+              key={option}
+              className={option === choice.level ? "chosen" : ""}
+              aria-pressed={option === choice.level}
+              onClick={() => { update({ level: option }); forward(); }}
+            >
+              <b>{DIFFICULTY_NAME[option]}</b><small>{DIFFICULTY_HINT[option]}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (step === "coach") {
+    return (
+      <section className="panel setup-panel wizard-panel">
+        {head}
+        <h1>Vil du ha hjelp?</h1>
+        <p className="muted">Begge kan skrus av og på igjen neste gang du setter deg.</p>
+        <label className="switch-row">
+          <b>Coach</b>
+          <small>Etter hver hånd går den gjennom valgene dine og regner ut om prisen var riktig. Den dømmer situasjonen, ikke utfallet.</small>
+          <input type="checkbox" checked={choice.coach} onChange={(event) => update({ coach: event.target.checked })} />
+        </label>
+        <label className="switch-row">
+          <b>Vis kastede kort</b>
+          <small>Etter showdown ser du hendene til dem som kastet seg – og om du selv kastet vinnerhånden.</small>
+          <input type="checkbox" checked={choice.showFolded} onChange={(event) => update({ showFolded: event.target.checked })} />
+        </label>
+        <button className="primary-cta" onClick={forward}>Videre</button>
+      </section>
+    );
+  }
+
+  const alone = choice.mode === "alene";
+  const named = name.trim().length > 0;
+  const waiting = Boolean(props.busy);
+  const joinable = !waiting && named && code.length === 5;
+  const primary: SetupAction = alone ? "alene" : invited ? "bli-med" : "lag-rom";
+  const nameField = (
+    <label>Navnet ditt
+      <input
+        value={name}
+        onChange={(event) => rename(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          if (primary === "bli-med" ? joinable : !waiting && (alone || named)) start(primary);
+        }}
+        maxLength={18}
+        placeholder="For eksempel Ole"
+        autoComplete="nickname"
+      />
+    </label>
+  );
+  const codeField = (
+    <label>Romkode
+      <input
+        className="code-input"
+        value={code}
+        onChange={(event) => setCode(cleanCode(event.target.value))}
+        maxLength={5}
+        placeholder="AB123"
+        autoCapitalize="characters"
+      />
+    </label>
+  );
+
+  return (
+    <section className="panel setup-panel wizard-panel">
+      {head}
+      {first}
+      <h1>{alone ? "Klar?" : invited ? "Du er invitert" : "Samle bordet"}</h1>
+      <p className="muted">
+        {alone
+          ? "Alt er valgt. Kortene ligger og venter."
+          : invited
+            ? `Skriv navnet ditt, så er du inne i rom ${code}.`
+            : "Alle åpner appen på sin mobil. Én lager rommet, resten får lenken."}
+      </p>
+      {/* Den som er invitert har ikke valgt noe selv – da er oppsummeringen bare støy. */}
+      {!invited && (
+        <ul className="setup-summary">
+          {summaryOf(choice).map((line) => <li key={line}>{line}</li>)}
+        </ul>
+      )}
+      {nameField}
+      {alone && <button className="primary-cta" disabled={waiting} onClick={() => start("alene")}>Sett deg ved bordet</button>}
+      {!alone && invited && (
+        <>
+          {codeField}
+          <button className="primary-cta" disabled={!joinable} onClick={() => start("bli-med")}>Bli med</button>
+          <div className="divider"><span>eller</span></div>
+          <button className="outline-cta" disabled={waiting || !named} onClick={() => start("lag-rom")}>Lag nytt rom</button>
+        </>
+      )}
+      {!alone && !invited && (
+        <>
+          <button className="primary-cta" disabled={waiting || !named} onClick={() => start("lag-rom")}>Lag nytt rom</button>
+          <div className="divider"><span>eller</span></div>
+          {codeField}
+          <button className="outline-cta" disabled={!joinable} onClick={() => start("bli-med")}>Bli med</button>
+        </>
+      )}
+      {props.error && <p className="error-message">{props.error}</p>}
+      {alone && choice.game === "bakrommet" && <p className="tiny">Ingen penger bytter hender. Sjetongene er bare tall.</p>}
+    </section>
+  );
+}
