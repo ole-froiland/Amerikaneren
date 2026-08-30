@@ -28,10 +28,11 @@ sammenlignes med fasiten (20, 400 og 8902 fra utgangsstillingen, 2039 fra Kiwipe
 til som er laget for å avsløre feil i binding, rokade og promotering).
 
 Boten er negamax med alfa-beta, slagsortering og en kort slagveksling på slutten, så den ikke slutter
-å regne midt i et bytte. Nivåene styrer hvor dypt den ser: lett ett trekk, middels to, vanskelig tre –
-og lett slenger ut et tilfeldig trekk i tre av ti tilfeller, så det går an å vinne. Vurderingen er
-materiell pluss standardtabeller for hvor brikkene står godt. Et trekk tar under et sekund, og det er
-testet.
+å regne midt i et bytte. De fem nivåene styrer hvor dypt den ser og hvor ofte den roter: nybegynner og
+lett ser ett trekk fram og slenger ut et tilfeldig trekk i henholdsvis 55 og 30 prosent av tilfellene,
+middels ser to, vanskelig tre, og umulig fire uten å rote. Vurderingen er materiell pluss
+standardtabeller for hvor brikkene står godt. Selv det høyeste nivået svarer på under et halvt sekund,
+og det er testet.
 
 Mot en venn deler dere samme rom som i Amerikaneren: verten spiller hvit, den som blir med spiller
 svart, og brettet snus så dine egne brikker står nærmest. Brettet lastes først når noen faktisk skal
@@ -60,6 +61,21 @@ forsvinner i det partiet går ut av teori.
 
 Er det ditt eget trekk som ligger sist, står coachens merke først i linjen. Har motstanderen svart,
 omtaler linjen deres trekk, mens ditt eget merke blir stående på ruta på brettet.
+
+### Gjennomgang etter partiet
+
+Er coachen på, regnes hele partiet gjennom når det er slutt: treffsikkerhet fra 0 til 100 for begge
+sider, delt på åpning, midtspill og sluttspill, og antall tabber.
+
+Hvert trekk sammenlignes med det beste trekket i stillingen, og tapet gjøres om til en score med
+`100 · e^(−tap/180)`: null tap er 100, en halv bonde er 76, en hel er 57, tre er 19. Skalaen er vår
+egen, ikke chess.com sin, men den er monoton og dokumentert i `accuracyOf()`.
+
+Åpningen er de ti første trekkene hver, sluttspillet begynner når det er mindre enn 1400 i
+offisersmateriell igjen, og resten er midtspill. Gjennomgangen bruker samme dybde som coachen — grunnere
+ville ikke sett at et trekk slipper inn matt — men trenger bare to søk per trekk, siden den skal finne
+tapet og ikke navnet på det beste trekket. Et helt parti på 69 trekk tar rundt 130 ms, og regnes ut ett
+trekk om gangen så siden ikke fryser.
 
 ### Coach på brettet
 
@@ -123,9 +139,10 @@ Dealerknappen, lilleblind og storeblind flyttes ett sete for hver hånd. Flop, t
 med tre, ett og ett kort, med en budrunde mellom hver. Du kan kaste, sjekke, syne, høyne eller gå all-in.
 Sidepotter regnes ut når noen er all-in for mindre enn de andre.
 
-Botene har tre nivåer. Lette bots syner nesten alt og høyner sjelden, vanskelige legger ned søppel og
-presser hardt — målt over mange hender kaster de rundt fire ganger så ofte som de lette. Profilene ligger
-i `DIFFICULTY` i `src/poker.ts`.
+Botene har fem nivåer, fra nybegynner til umulig. De svakeste syner nesten alt og høyner sjelden, de
+sterkeste legger ned søppel og presser hardt — målt over mange hender kaster de mangedobbelt så ofte.
+Profilene ligger i `DIFFICULTY` i `src/poker.ts`, og en test låser at skalaen faktisk er en skala:
+for hvert steg oppover skal boten feilvurdere mindre, syne mer nøkternt og høyne på svakere hender.
 
 Øverst til høyre står sjansen for at du vinner hånden, regnet ut med Monte Carlo mot tilfeldige
 motstanderhender (`equity()`). Den treffer standard oddstabeller innenfor ett prosentpoeng og tar rundt

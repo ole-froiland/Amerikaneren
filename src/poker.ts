@@ -73,11 +73,15 @@ export interface DifficultyProfile {
 }
 
 export const DIFFICULTY: Record<Difficulty, DifficultyProfile> = {
+  // Ser knapt på kortene: syner alt, høyner nesten aldri.
+  nybegynner: { noise: 0.5, raiseAt: 0.97, callMargin: -0.34, bluff: 0.02, aggression: 0.3 },
   // Passiv og godtroende: syner nesten alt, høyner nesten aldri, bommer på styrken.
   lett: { noise: 0.34, raiseAt: 0.92, callMargin: -0.22, bluff: 0.04, aggression: 0.45 },
   middels: { noise: 0.12, raiseAt: 0.82, callMargin: 0.06, bluff: 0.14, aggression: 0.7 },
   // Ser hånden klart, presser med gode kort og legger ned de dårlige.
   vanskelig: { noise: 0.04, raiseAt: 0.7, callMargin: 0.13, bluff: 0.24, aggression: 0.95 },
+  // Leser prisen riktig: ingen støy, legger ned alt tvilsomt og presser med resten.
+  umulig: { noise: 0, raiseAt: 0.62, callMargin: 0.18, bluff: 0.3, aggression: 1 },
 };
 
 /**

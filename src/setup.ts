@@ -8,23 +8,30 @@
 export type SetupMode = "alene" | "venner";
 export type SetupGame = "amerikaneren" | "poker" | "sjakk";
 export type SetupStep = "modus" | "spill" | "antall" | "niva" | "coach" | "klar";
-export type Difficulty = "lett" | "middels" | "vanskelig";
+export type Difficulty = "nybegynner" | "lett" | "middels" | "vanskelig" | "umulig";
+
+/** Skalaen fra svakest til sterkest. Rekkefølgen er den skyveknappen bruker. */
+export const LEVELS: Difficulty[] = ["nybegynner", "lett", "middels", "vanskelig", "umulig"];
 
 export const DIFFICULTY_NAME: Record<Difficulty, string> = {
-  lett: "Lett", middels: "Middels", vanskelig: "Vanskelig",
+  nybegynner: "Nybegynner", lett: "Lett", middels: "Middels", vanskelig: "Vanskelig", umulig: "Umulig",
 };
 
 /** Hva nivået betyr er ikke det samme ved et pokerbord som ved et sjakkbrett. */
 const HINTS: Partial<Record<SetupGame, Record<Difficulty, string>>> = {
   poker: {
+    nybegynner: "syner nesten alt og ser knapt på kortene",
     lett: "syner for mye, høyner sjelden",
     middels: "spiller stort sett fornuftig",
     vanskelig: "presser hardt og legger ned søppel",
+    umulig: "leser prisen riktig hver gang og gir deg ingenting",
   },
   sjakk: {
-    lett: "gir bort brikker og ser bare ett trekk fram",
+    nybegynner: "roter bort brikker og ser ikke trusler",
+    lett: "ser ett trekk fram og bommer ofte",
     middels: "ser to trekk fram og straffer bommerter",
     vanskelig: "regner tre trekk fram og gir ingenting gratis",
+    umulig: "regner fire trekk fram og straffer alt",
   },
 };
 
@@ -141,7 +148,7 @@ export function readChoice(read: (key: string) => string | null): SetupChoice {
     game: gameAvailable(mode, game) ? game : "amerikaneren",
     humans: count(read(SETUP_KEYS.humans), DEFAULT_SETUP.humans, MIN_HUMANS, MAX_HUMANS),
     opponents: count(read(SETUP_KEYS.opponents), DEFAULT_SETUP.opponents, MIN_OPPONENTS, MAX_OPPONENTS),
-    level: saved === "lett" || saved === "middels" || saved === "vanskelig" ? saved : DEFAULT_SETUP.level,
+    level: LEVELS.includes(saved as Difficulty) ? saved as Difficulty : DEFAULT_SETUP.level,
     // Coachen er av som standard – den er der for den som vil ha den.
     coach: read(SETUP_KEYS.coach) === "på",
     // Kastede kort vises som standard – det er slik man lærer av hendene.

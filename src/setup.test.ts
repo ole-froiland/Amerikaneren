@@ -65,7 +65,7 @@ test("counts outside the table size are pulled back in", () => {
 });
 
 test("junk values fall back instead of throwing", () => {
-  const saved = store({ [SETUP_KEYS.humans]: "tre", [SETUP_KEYS.level]: "umulig", [SETUP_KEYS.game]: "ludo" });
+  const saved = store({ [SETUP_KEYS.humans]: "tre", [SETUP_KEYS.level]: "grusom", [SETUP_KEYS.game]: "ludo" });
   const choice = readChoice(saved.read);
   assert.equal(choice.humans, DEFAULT_SETUP.humans);
   assert.equal(choice.level, DEFAULT_SETUP.level);

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   START_FEN,
+  accuracyOf,
   advantage,
+  analyseAt,
   applyChessMove,
   botChessMove,
   createChessGame,
@@ -17,12 +19,15 @@ import {
   parseFen,
   positionOf,
   pseudoMoves,
+  reportFrom,
   reviewMove,
+  sameMove,
   squareFromName,
   toFen,
   unmake,
 } from "./chess.ts";
 import type { ChessMove, ChessState, Position } from "./chess.ts";
+import type { Difficulty } from "./setup.ts";
 
 /** Teller alle lovlige trekkfølger. Fasiten er kjent, så feil i reglene dukker opp med en gang. */
 function perft(position: Position, depth: number): number {
@@ -37,7 +42,7 @@ function perft(position: Position, depth: number): number {
   return total;
 }
 
-const game = (fen: string, difficulty: "lett" | "middels" | "vanskelig" = "vanskelig"): ChessState =>
+const game = (fen: string, difficulty: Difficulty = "vanskelig"): ChessState =>
   createChessGame(createChessPlayers(["Du"], difficulty), difficulty, fen);
 
 const move = (from: string, to: string, promotion?: ChessMove["promotion"]): ChessMove =>
@@ -174,14 +179,6 @@ test("the bot answers within a second", () => {
   assert.ok(Date.now() - started < 1000, `boten brukte ${Date.now() - started} ms`);
 });
 
-test("every level plays a legal move", () => {
-  for (const level of ["lett", "middels", "vanskelig"] as const) {
-    const state = game(START_FEN, level);
-    const chosen = botChessMove(state);
-    assert.ok(legalMoves(positionOf(state)).some((option) => option.from === chosen!.from && option.to === chosen!.to));
-  }
-});
-
 test("the coach calls a hanging queen a blunder and names the move instead", () => {
   // Dronningene står mot hverandre: slår du, vinner du henne. Går du til d5, blir hun tatt.
   const state = game("3qk3/8/8/8/8/8/8/3QK3 w - - 0 1", "vanskelig");
@@ -224,7 +221,7 @@ test("the gauge counts a mate instead of pawns", () => {
   const mated = applyChessMove(game("6k1/5ppp/8/8/8/8/8/R3K2R w KQ - 0 1"), move("a1", "a8"));
   const done = advantage(mated);
   assert.equal(done.mate, 0);
-  assert.equal(gaugeLabel(done), "matt");
+  assert.equal(gaugeLabel(done), "#");
   assert.equal(gaugeShare(done), 1);
 
   const coming = advantage(game("6k1/5ppp/8/8/8/8/8/R3K2R w KQ - 0 1"), 3);
@@ -268,4 +265,59 @@ test("the move line calls a fork a fork", () => {
   const notes = checked.history.length ? describeLast(checked)!.notes : [];
   assert.ok(notes.includes("sjakk"), notes.join(" · "));
   assert.ok(notes.some((note) => note.startsWith("truer tårnet på a8")), notes.join(" · "));
+});
+
+test("every level plays a legal move, and the hardest one answers in time", () => {
+  for (const level of ["nybegynner", "lett", "middels", "vanskelig", "umulig"] as const) {
+    const state = game("r1bq1rk1/pp2ppbp/2np1np1/2p5/2P1P3/2NP1N1P/PP2BPP1/R1BQ1RK1 w - - 0 9", level);
+    const started = Date.now();
+    const chosen = botChessMove(state);
+    assert.ok(legalMoves(positionOf(state)).some((option) => sameMove(option, chosen!)), `${level} spilte ulovlig`);
+    assert.ok(Date.now() - started < 1500, `${level} brukte ${Date.now() - started} ms`);
+  }
+});
+
+test("the review scores a clean game high and a loose one low", () => {
+  // Hvit spiller fornuftig, svart gir bort brikker.
+  let state = game(START_FEN, "middels");
+  for (const [from, to] of [["e2", "e4"], ["b8", "a6"], ["g1", "f3"], ["a6", "b8"], ["b1", "c3"], ["d7", "d5"], ["e4", "d5"], ["d8", "d5"], ["c3", "d5"]]) {
+    state = applyChessMove(state, move(from, to));
+  }
+  const losses = state.history.map((_, index) => analyseAt(state, index)!).filter(Boolean);
+  assert.equal(losses.length, state.history.length);
+  const report = reportFrom(losses);
+  assert.ok(report.hvit.total.score > report.svart.total.score, `hvit ${report.hvit.total.score} mot svart ${report.svart.total.score}`);
+  assert.ok(report.svart.blunders >= 1, "å gi bort dronningen skal telles som tabbe");
+  assert.equal(report.hvit.åpning.moves + report.hvit.midtspill.moves + report.hvit.sluttspill.moves, report.hvit.total.moves);
+});
+
+test("the review splits the game into phases", () => {
+  const opening = analyseAt(applyChessMove(game(START_FEN), move("e2", "e4")), 0);
+  assert.equal(opening?.phase, "åpning");
+
+  const bare = applyChessMove(game("4k3/4p3/8/8/8/8/4P3/R3K3 w - - 0 40"), move("a1", "a4"));
+  assert.equal(analyseAt(bare, 0)?.phase, "sluttspill");
+});
+
+test("accuracy falls as the loss grows", () => {
+  const at = (loss: number) => accuracyOf([{ by: "hvit", loss, phase: "midtspill" }]);
+  assert.equal(at(0), 100);
+  assert.ok(at(50) > at(150) && at(150) > at(400));
+  assert.ok(at(400) < 20);
+});
+
+test("the review sees the move that allowed mate, and gets through a game quickly", () => {
+  // Narrematt: 3.a3 slipper Dh4 matt inn.
+  let state = game(START_FEN, "middels");
+  for (const [from, to] of [["f2", "f3"], ["b8", "c6"], ["g2", "g4"], ["e7", "e5"], ["a2", "a3"], ["d8", "h4"]]) {
+    state = applyChessMove(state, move(from, to));
+  }
+  assert.equal(state.outcome, "matt");
+  const started = Date.now();
+  const losses = state.history.map((_, index) => analyseAt(state, index)!);
+  const spent = Date.now() - started;
+  const report = reportFrom(losses);
+  assert.ok(report.hvit.blunders >= 1, `å slippe inn matt skal telle som tabbe: ${JSON.stringify(losses)}`);
+  assert.ok(report.svart.total.score > report.hvit.total.score);
+  assert.ok(spent < 2000, `gjennomgangen brukte ${spent} ms på seks trekk`);
 });

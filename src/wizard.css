@@ -94,30 +94,47 @@
 
 /* --- Vanskelighetsgrad --- */
 
-.level-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin: 24px 0 4px;
-}
+.level-slider { margin: 26px 0 22px; }
 
-.level-grid button {
-  min-height: 66px;
-  padding: 9px 6px;
-  display: grid;
-  align-content: center;
-  gap: 3px;
-  color: #1d382c;
-  background: #eef2ed;
-  border: 1px solid #dce3de;
-  border-radius: 9px;
+.level-slider input[type="range"] {
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  accent-color: #2c7a56;
   cursor: pointer;
 }
 
-.level-grid b { font-size: 14px; }
-.level-grid small { font-size: 9px; line-height: 1.25; color: #7a8880; }
-.level-grid .chosen { color: #15271f; background: var(--gold); border-color: #d5a84d; }
-.level-grid .chosen small { color: #6b551f; }
+.level-ticks {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 3px;
+  margin-top: -4px;
+}
+
+.level-ticks i {
+  width: 7px;
+  height: 7px;
+  background: #dce3de;
+  border-radius: 50%;
+}
+
+.level-ticks i.på { background: #2c7a56; }
+
+.level-current {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 3px;
+  padding: 11px 13px;
+  background: #f2f5f2;
+  border: 1px solid #e0e7e2;
+  border-radius: 10px;
+}
+
+.level-current b { font-size: 15px; color: #1d382c; }
+.level-current small { font-size: 12px; line-height: 1.35; color: #7a8880; }
 
 /* --- Coach og kastede kort --- */
 
@@ -166,9 +183,9 @@
   .wizard-panel { margin-top: 18px; margin-bottom: 18px; padding: 22px; }
   .wizard-panel h1 { font-size: 28px; }
   .wizard-head { margin-bottom: 14px; }
-  .choice-grid, .count-grid, .level-grid { margin: 16px 0 4px; }
+  .choice-grid, .count-grid { margin: 16px 0 4px; }
+  .level-slider { margin: 18px 0 16px; }
   .count-grid button { min-height: 52px; }
-  .level-grid button { min-height: 58px; }
   .switch-row:first-of-type { margin-top: 16px; }
   .switch-row { padding: 10px 12px; }
 }

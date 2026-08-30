@@ -690,9 +690,9 @@ function search(position: Position, depth: number, alpha: number, beta: number, 
   return best;
 }
 
-const DEPTH: Record<Difficulty, number> = { lett: 1, middels: 2, vanskelig: 3 };
+const DEPTH: Record<Difficulty, number> = { nybegynner: 1, lett: 1, middels: 2, vanskelig: 3, umulig: 4 };
 /** Hvor ofte boten bare slenger ut et tilfeldig trekk. */
-const SLIP: Record<Difficulty, number> = { lett: 0.3, middels: 0.07, vanskelig: 0 };
+const SLIP: Record<Difficulty, number> = { nybegynner: 0.55, lett: 0.3, middels: 0.07, vanskelig: 0, umulig: 0 };
 
 /** Trekket boten vil gjøre, eller null om partiet er slutt. */
 export function botChessMove(state: ChessState, random = Math.random): ChessMove | null {
@@ -819,7 +819,8 @@ export const gaugeShare = (advantage: Advantage) => {
 
 /** Tallet slik det står på baren: «+1,2», «−0,8», «M3». */
 export function gaugeLabel(advantage: Advantage): string {
-  if (advantage.mate !== null) return advantage.mate === 0 ? "matt" : `M${Math.abs(advantage.mate)}`;
+  // «#» er matt, som i notasjonen – ordet ville ikke fått plass på baren.
+  if (advantage.mate !== null) return advantage.mate === 0 ? "#" : `M${Math.abs(advantage.mate)}`;
   const pawns = advantage.score / 100;
   if (Math.abs(pawns) < 0.05) return "0,0";
   return `${pawns > 0 ? "+" : "−"}${Math.abs(pawns).toFixed(1).replace(".", ",")}`;
@@ -957,3 +958,98 @@ export function describeLast(state: ChessState): MoveInfo | null {
   const line = state.history.map((entry) => entry.text).join(" ");
   return { opening: OPENINGS[line] ?? null, notes };
 }
+
+/* --- Gjennomgang av hele partiet --- */
+
+export type Phase = "åpning" | "midtspill" | "sluttspill";
+
+export interface PlyLoss {
+  by: PieceColor;
+  /** Hva trekket kostet mot det beste trekket, i hundredels bonde. */
+  loss: number;
+  phase: Phase;
+}
+
+export interface PhaseScore {
+  /** Treffsikkerhet fra 0 til 100. */
+  score: number;
+  moves: number;
+}
+
+export interface PlayerReport {
+  total: PhaseScore;
+  åpning: PhaseScore;
+  midtspill: PhaseScore;
+  sluttspill: PhaseScore;
+  blunders: number;
+}
+
+export interface GameReport {
+  hvit: PlayerReport;
+  svart: PlayerReport;
+}
+
+/** Samme dybde som coachen: grunnere ville ikke sett at et trekk tillater matt. */
+export const ANALYSIS_DEPTH = 3;
+/** Under så mye offisersmateriell igjen regner vi det som sluttspill. */
+const ENDGAME_MATERIAL = 1400;
+/** De første ti trekkene hver, så lenge det fortsatt står brikker på brettet. */
+const OPENING_PLIES = 20;
+
+function phaseOf(position: Position, index: number): Phase {
+  let material = 0;
+  for (const piece of position.board) {
+    if (!piece || piece.type === "konge" || piece.type === "bonde") continue;
+    material += VALUE[piece.type];
+  }
+  if (material <= ENDGAME_MATERIAL) return "sluttspill";
+  return index < OPENING_PLIES ? "åpning" : "midtspill";
+}
+
+/**
+ * Hva trekk nummer `index` kostet. Stillingen spilles om fra starten hver gang,
+ * slik at hvert kall står på egne ben og kan kjøres litt om gangen.
+ */
+export function analyseAt(state: ChessState, index: number, depth = ANALYSIS_DEPTH): PlyLoss | null {
+  const record = state.history[index];
+  if (!record) return null;
+  const position = parseFen(state.start || START_FEN);
+  for (let i = 0; i < index; i += 1) make(position, state.history[i].move);
+
+  const phase = phaseOf(position, index);
+  if (legalMoves(position).length < 2) return { by: record.by, loss: 0, phase };
+
+  // Her trengs bare tapet, ikke hvilket trekk som var best. Da holder det med to
+  // søk – ett med full beskjæring for det beste, og ett for trekket som ble spilt.
+  const best = search(position, depth, -MATE * 2, MATE * 2, 0);
+  const undo = make(position, record.move);
+  const played = -search(position, depth - 1, -MATE * 2, MATE * 2, 1);
+  unmake(position, undo);
+  return { by: record.by, loss: Math.max(0, Math.min(1200, best - played)), phase };
+}
+
+/**
+ * Treffsikkerheten for en rekke trekk. Et trekk uten tap teller 100, og kurven
+ * faller jevnt derfra: 50 i tap gir 76, 100 gir 57, 300 gir 19.
+ */
+export const accuracyOf = (losses: PlyLoss[]) => (losses.length
+  ? Math.round(losses.reduce((sum, ply) => sum + 100 * Math.exp(-ply.loss / 180), 0) / losses.length)
+  : 0);
+
+const scoreFor = (losses: PlyLoss[]): PhaseScore => ({ score: accuracyOf(losses), moves: losses.length });
+
+const reportFor = (losses: PlyLoss[], color: PieceColor): PlayerReport => {
+  const mine = losses.filter((ply) => ply.by === color);
+  return {
+    total: scoreFor(mine),
+    åpning: scoreFor(mine.filter((ply) => ply.phase === "åpning")),
+    midtspill: scoreFor(mine.filter((ply) => ply.phase === "midtspill")),
+    sluttspill: scoreFor(mine.filter((ply) => ply.phase === "sluttspill")),
+    blunders: mine.filter((ply) => ply.loss >= 250).length,
+  };
+};
+
+export const reportFrom = (losses: PlyLoss[]): GameReport => ({
+  hvit: reportFor(losses, "hvit"),
+  svart: reportFor(losses, "svart"),
+});

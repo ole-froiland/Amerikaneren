@@ -477,3 +477,14 @@ test("grensetilfeller kalles det de er, ikke riktige", () => {
     assert.equal(syn.headline, "På vippen");
   }
 });
+
+test("the five levels are a scale, not five names", () => {
+  const levels = ["nybegynner", "lett", "middels", "vanskelig", "umulig"] as const;
+  for (let i = 1; i < levels.length; i += 1) {
+    const softer = DIFFICULTY[levels[i - 1]];
+    const harder = DIFFICULTY[levels[i]];
+    assert.ok(softer.noise > harder.noise, `${levels[i]} skal feilvurdere mindre enn ${levels[i - 1]}`);
+    assert.ok(softer.callMargin < harder.callMargin, `${levels[i]} skal syne mer nøkternt enn ${levels[i - 1]}`);
+    assert.ok(softer.raiseAt > harder.raiseAt, `${levels[i]} skal høyne på svakere hender enn ${levels[i - 1]}`);
+  }
+});

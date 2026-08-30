@@ -14,6 +14,7 @@ import {
   VERDICT_MARK,
   VERDICT_NAME,
   advantage,
+  analyseAt,
   applyChessMove,
   botChessMove,
   createChessGame,
@@ -23,10 +24,11 @@ import {
   gaugeShare,
   movesFrom,
   positionOf,
+  reportFrom,
   reviewMove,
   squareName,
 } from "./chess.ts";
-import type { Advantage, ChessMove, ChessPiece, ChessState, CoachNote, PieceColor, PieceType } from "./chess.ts";
+import type { Advantage, ChessMove, ChessPiece, ChessState, CoachNote, PieceColor, PieceType, PlayerReport, PlyLoss } from "./chess.ts";
 import type { Difficulty } from "./setup.ts";
 
 /** Litt pause før boten svarer, så trekket rekker å synke inn. */
@@ -50,7 +52,10 @@ export default function ChessBoard(props: {
   const [pick, setPick] = useState<{ square: number; ply: number } | null>(null);
   const [pending, setPending] = useState<{ move: ChessMove; ply: number } | null>(null);
   const [judged, setJudged] = useState<{ note: CoachNote; ply: number; square: number } | null>(null);
+  // Gjennomgangen regnes ett trekk om gangen etter partiet, så siden ikke fryser.
+  const [analysis, setAnalysis] = useState<{ forPly: number; losses: PlyLoss[] }>({ forPly: -1, losses: [] });
   const timer = useRef(0);
+  const sheet = useRef<HTMLDivElement>(null);
   const ply = state?.history.length ?? -1;
   const from = pick?.ply === ply ? pick.square : null;
   const promotion = pending?.ply === ply ? pending.move : null;
@@ -96,6 +101,30 @@ export default function ChessBoard(props: {
     }, BOT_DELAY);
     return () => window.clearTimeout(timer.current);
   }, [state, onCommit]);
+
+  const over = Boolean(state) && state!.outcome !== "spiller";
+
+  // Partiet er slutt: rull arket fram, ellers ligger det under skjermkanten på mobil.
+  useEffect(() => {
+    if (over) sheet.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [over]);
+  // Er analysen fra et annet parti, teller den ikke. Egen memo, ellers ville
+  // listen vært ny for hver render og satt effekten under i gang på nytt.
+  const losses = useMemo(
+    () => (analysis.forPly === (state?.history.length ?? -1) ? analysis.losses : []),
+    [analysis, state],
+  );
+  const analysing = over && props.coach && Boolean(state) && losses.length < state!.history.length;
+
+  // Ett trekk per tikk, med pause imellom, slik at knappene svarer mens det regnes.
+  useEffect(() => {
+    if (!analysing || !state) return;
+    const id = window.setTimeout(() => {
+      const next = analyseAt(state, losses.length);
+      if (next) setAnalysis({ forPly: state.history.length, losses: [...losses, next] });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [analysing, losses, state]);
 
   if (!state) {
     return (
@@ -157,7 +186,6 @@ export default function ChessBoard(props: {
   };
   const opponent = state.players.find((player) => player.color !== myColor);
   const me = state.players.find((player) => player.color === myColor);
-  const over = state.outcome !== "spiller";
 
   return (
     <section className="chess-screen">
@@ -246,11 +274,16 @@ export default function ChessBoard(props: {
       )}
 
       {over && (
-        <div className="chess-sheet">
+        <div className="chess-sheet" ref={sheet}>
           <p className="chess-result">{state.message}</p>
-          {props.online
-            ? <p className="tiny">Trykk under, så starter dere på nytt med byttede farger.</p>
-            : null}
+          {props.coach && (
+            analysing
+              ? <p className="tiny">Går gjennom partiet… {losses.length} av {state.history.length} trekk</p>
+              : losses.length
+                ? <Report report={reportFrom(losses)} myColor={myColor} players={state.players} />
+                : null
+          )}
+          {props.online && <p className="tiny">Trykk under, så starter dere på nytt med byttede farger.</p>}
           <button className="primary-cta" onClick={restart}>Nytt parti</button>
         </div>
       )}
@@ -274,6 +307,48 @@ function Gauge({ advantage, bottom }: { advantage: Advantage; bottom: PieceColor
       <div className="chess-gauge-fill" style={{ height: `${share * 100}%` }} />
       {/* Tallet flytter seg ned hvis fyllet dekker toppen. */}
       <span className={`chess-gauge-value ${share > 0.82 ? "nede" : "oppe"}`}>{label}</span>
+    </div>
+  );
+}
+
+/** Treffsikkerheten for hver del av partiet, for begge sider. */
+function Report({ report, myColor, players }: {
+  report: ReturnType<typeof reportFrom>;
+  myColor: PieceColor;
+  players: ChessState["players"];
+}) {
+  const mine = myColor === "hvit" ? report.hvit : report.svart;
+  const theirs = myColor === "hvit" ? report.svart : report.hvit;
+  const rows: [string, keyof PlayerReport][] = [["Åpning", "åpning"], ["Midtspill", "midtspill"], ["Sluttspill", "sluttspill"]];
+  const name = (color: PieceColor) => players.find((player) => player.color === color)?.name ?? COLOR_NAME[color];
+  const cell = (report_: PlayerReport, key: keyof PlayerReport) => {
+    const phase = report_[key] as { score: number; moves: number };
+    return phase.moves ? <b>{phase.score}</b> : <i>–</i>;
+  };
+  return (
+    <div className="chess-report">
+      <div className="chess-report-row chess-report-head">
+        <span />
+        <span>{name(myColor)}</span>
+        <span>{name(myColor === "hvit" ? "svart" : "hvit")}</span>
+      </div>
+      {rows.map(([label, key]) => (
+        <div className="chess-report-row" key={key}>
+          <span>{label}</span>
+          {cell(mine, key)}
+          {cell(theirs, key)}
+        </div>
+      ))}
+      <div className="chess-report-row chess-report-total">
+        <span>Treffsikkerhet</span>
+        <b>{mine.total.score}</b>
+        <b>{theirs.total.score}</b>
+      </div>
+      <p className="tiny">
+        {mine.blunders || theirs.blunders
+          ? `Tabber: ${mine.blunders} mot ${theirs.blunders}. 100 er feilfritt.`
+          : "Ingen tabber i partiet. 100 er feilfritt."}
+      </p>
     </div>
   );
 }

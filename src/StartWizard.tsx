@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   DIFFICULTY_NAME,
+  LEVELS,
   MAX_HUMANS,
   MAX_OPPONENTS,
   MIN_HUMANS,
@@ -19,7 +20,7 @@ import {
   stepsFor,
   summaryOf,
 } from "./setup.ts";
-import type { Difficulty, SetupChoice, SetupGame } from "./setup.ts";
+import type { SetupChoice, SetupGame } from "./setup.ts";
 import "./wizard.css";
 
 export type SetupAction = "alene" | "lag-rom" | "bli-med";
@@ -105,7 +106,6 @@ export default function StartWizard(props: {
             onClick={() => { update({ mode: "alene" }); forward(); }}
           >
             <b>Spill alene</b>
-            <small>Mot bots, med en gang</small>
           </button>
           <button
             className={choice.mode === "venner" ? "chosen" : ""}
@@ -113,7 +113,6 @@ export default function StartWizard(props: {
             onClick={() => { update({ mode: "venner" }); forward(); }}
           >
             <b>Spill med venner</b>
-            <small>Del en lenke, spill fra hver deres mobil</small>
           </button>
         </div>
         {props.onRules && <button className="wizard-rules" onClick={props.onRules}>Hvordan spiller man?</button>}
@@ -134,7 +133,7 @@ export default function StartWizard(props: {
             onClick={() => { update({ game: "amerikaneren" }); forward(); }}
           >
             <b>Amerikaneren</b>
-            <small>Stikkspill for fire. Først til 52 poeng.</small>
+            <small>Stikkspill for fire</small>
           </button>
           <button
             className={choice.game === "sjakk" ? "chosen" : ""}
@@ -142,7 +141,7 @@ export default function StartWizard(props: {
             onClick={() => { update({ game: "sjakk" }); forward(); }}
           >
             <b>Sjakk</b>
-            <small>Vanlige regler, mot bot eller en venn.</small>
+            <small>Mot bot eller en venn</small>
           </button>
           <button
             className={choice.game === "poker" ? "chosen" : ""}
@@ -151,7 +150,7 @@ export default function StartWizard(props: {
             onClick={() => { update({ game: "poker" }); forward(); }}
           >
             <b>Poker</b>
-            <small>{openTable ? "Texas hold'em med falske sjetonger." : "Bare alene foreløpig."}</small>
+            <small>{openTable ? "Texas hold'em med sjetonger" : "Bare alene foreløpig"}</small>
           </button>
         </div>
       </section>
@@ -188,23 +187,31 @@ export default function StartWizard(props: {
   }
 
   if (step === "niva") {
+    const at = Math.max(0, LEVELS.indexOf(choice.level));
     return (
       <section className="panel setup-panel wizard-panel">
         {head}
         <h1>{choice.game === "sjakk" ? "Hvor sterk skal boten være?" : "Hvor tøffe skal de være?"}</h1>
-        <p className="muted">{choice.game === "sjakk" ? "Du spiller hvit og begynner." : "Gjelder alle botene."}</p>
-        <div className="level-grid">
-          {(["lett", "middels", "vanskelig"] as Difficulty[]).map((option) => (
-            <button
-              key={option}
-              className={option === choice.level ? "chosen" : ""}
-              aria-pressed={option === choice.level}
-              onClick={() => { update({ level: option }); forward(); }}
-            >
-              <b>{DIFFICULTY_NAME[option]}</b><small>{difficultyHint(choice.game, option)}</small>
-            </button>
-          ))}
+        <div className="level-slider">
+          <input
+            type="range"
+            min={0}
+            max={LEVELS.length - 1}
+            step={1}
+            value={at}
+            onChange={(event) => update({ level: LEVELS[Number(event.target.value)] })}
+            aria-label="Vanskelighetsgrad"
+            aria-valuetext={DIFFICULTY_NAME[choice.level]}
+          />
+          <div className="level-ticks" aria-hidden="true">
+            {LEVELS.map((option, index) => <i key={option} className={index <= at ? "på" : ""} />)}
+          </div>
+          <p className="level-current">
+            <b>{DIFFICULTY_NAME[choice.level]}</b>
+            <small>{difficultyHint(choice.game, choice.level)}</small>
+          </p>
         </div>
+        <button className="primary-cta" onClick={forward}>Videre</button>
       </section>
     );
   }
