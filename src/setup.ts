@@ -2,11 +2,11 @@
  * Valgene man tar før spillet starter, og reglene for hvilke steg som gjelder.
  *
  * Rene funksjoner uten React eller nettleser. Veiviseren i StartWizard.tsx er
- * bare skallet rundt dette, og både forsiden og Bakrommet bruker samme steg.
+ * bare skallet rundt dette, og både forsiden og Poker bruker samme steg.
  */
 
 export type SetupMode = "alene" | "venner";
-export type SetupGame = "amerikaneren" | "bakrommet";
+export type SetupGame = "amerikaneren" | "poker" | "sjakk";
 export type SetupStep = "modus" | "spill" | "antall" | "niva" | "coach" | "klar";
 export type Difficulty = "lett" | "middels" | "vanskelig";
 
@@ -14,14 +14,24 @@ export const DIFFICULTY_NAME: Record<Difficulty, string> = {
   lett: "Lett", middels: "Middels", vanskelig: "Vanskelig",
 };
 
-export const DIFFICULTY_HINT: Record<Difficulty, string> = {
-  lett: "syner for mye, høyner sjelden",
-  middels: "spiller stort sett fornuftig",
-  vanskelig: "presser hardt og legger ned søppel",
+/** Hva nivået betyr er ikke det samme ved et pokerbord som ved et sjakkbrett. */
+const HINTS: Partial<Record<SetupGame, Record<Difficulty, string>>> = {
+  poker: {
+    lett: "syner for mye, høyner sjelden",
+    middels: "spiller stort sett fornuftig",
+    vanskelig: "presser hardt og legger ned søppel",
+  },
+  sjakk: {
+    lett: "gir bort brikker og ser bare ett trekk fram",
+    middels: "ser to trekk fram og straffer bommerter",
+    vanskelig: "regner tre trekk fram og gir ingenting gratis",
+  },
 };
 
+export const difficultyHint = (game: SetupGame, level: Difficulty) => HINTS[game]?.[level] ?? "";
+
 export const GAME_NAME: Record<SetupGame, string> = {
-  amerikaneren: "Amerikaneren", bakrommet: "Bakrommet",
+  amerikaneren: "Amerikaneren", poker: "Poker", sjakk: "Sjakk",
 };
 
 /** Amerikaneren spilles alltid fire rundt bordet, så det er bare menneskene som telles. */
@@ -35,7 +45,7 @@ export interface SetupChoice {
   game: SetupGame;
   /** Hvor mange mennesker det er plass til i rommet. Resten fylles av bots. */
   humans: number;
-  /** Hvor mange bots du spiller mot i Bakrommet. */
+  /** Hvor mange bots du spiller mot i Poker. */
   opponents: number;
   level: Difficulty;
   coach: boolean;
@@ -52,18 +62,20 @@ export const DEFAULT_SETUP: SetupChoice = {
   showFolded: true,
 };
 
-/** Bakrommet har ingen onlinerom, så det bordet kan bare spilles alene. */
+/** Poker har ingen onlinerom, så det bordet kan bare spilles alene. */
 export const gameAvailable = (mode: SetupMode, game: SetupGame) =>
-  game === "amerikaneren" || mode === "alene";
+  game !== "poker" || mode === "alene";
 
 /**
- * Stegene som gjelder for et valg. Bakrommet trenger nivå og coach, Amerikaneren
+ * Stegene som gjelder for et valg. Poker trenger nivå og coach, Amerikaneren
  * trenger bare antall når man venter på venner. Er spillet allerede gitt – som
  * på /poker – faller de to første stegene bort.
  */
 export function stepsFor(choice: SetupChoice, locked = false): SetupStep[] {
   const steps: SetupStep[] = locked ? [] : ["modus", "spill"];
-  if (choice.game === "bakrommet") steps.push("antall", "niva", "coach");
+  if (choice.game === "poker") steps.push("antall", "niva", "coach");
+  // Sjakk er alltid to om brettet, så antallet er gitt. Mot en venn er det ingen bot å stille inn.
+  else if (choice.game === "sjakk") { if (choice.mode === "alene") steps.push("niva"); }
   else if (choice.mode === "venner") steps.push("antall");
   steps.push("klar");
   return steps;
@@ -72,10 +84,15 @@ export function stepsFor(choice: SetupChoice, locked = false): SetupStep[] {
 /** Kort oppsummering av valgene, vist på siste steg før man starter. */
 export function summaryOf(choice: SetupChoice): string[] {
   const lines = [GAME_NAME[choice.game]];
-  if (choice.game === "bakrommet") {
+  if (choice.game === "poker") {
     lines.push(choice.opponents === 1 ? "mot én" : `mot ${choice.opponents}`);
     lines.push(DIFFICULTY_NAME[choice.level].toLowerCase());
     lines.push(choice.coach ? "coach på" : "coach av");
+    return lines;
+  }
+  if (choice.game === "sjakk") {
+    lines.push(choice.mode === "alene" ? "mot bot" : "to spillere");
+    if (choice.mode === "alene") lines.push(DIFFICULTY_NAME[choice.level].toLowerCase());
     return lines;
   }
   if (choice.mode === "alene") {
@@ -87,7 +104,8 @@ export function summaryOf(choice: SetupChoice): string[] {
   return lines;
 }
 
-/** Nøklene i localStorage. De gamle beholdes, så valg fra før veiviseren overlever. */
+/** Nøklene i localStorage. De gamle beholdes – også «bakrommet», som poker het før –
+ *  slik at valgene til den som spilte tidligere fortsatt gjelder. */
 export const SETUP_KEYS = {
   mode: "amerikaneren-modus",
   game: "amerikaneren-spill",
@@ -108,7 +126,10 @@ const count = (raw: string | null, fallback: number, low: number, high: number) 
 export function readChoice(read: (key: string) => string | null): SetupChoice {
   const saved = read(SETUP_KEYS.level);
   const mode: SetupMode = read(SETUP_KEYS.mode) === "venner" ? "venner" : "alene";
-  const game: SetupGame = read(SETUP_KEYS.game) === "bakrommet" ? "bakrommet" : "amerikaneren";
+  // «bakrommet» var navnet før, og ligger fortsatt lagret hos den som spilte da.
+  const savedGame = read(SETUP_KEYS.game);
+  const game: SetupGame = savedGame === "poker" || savedGame === "bakrommet" ? "poker"
+    : savedGame === "sjakk" ? "sjakk" : "amerikaneren";
   return {
     mode,
     // Lagret kombinasjon som ikke finnes lenger faller tilbake på Amerikaneren.

@@ -1,5 +1,5 @@
 /**
- * Bakrommet – pokerbordet på /poker.
+ * Poker – pokerbordet på /poker.
  *
  * Ingen ekte penger. Bare et bord, en pott av sjetonger og de tre knappene som
  * går rundt. Veiviseren på forsiden sender deg hit med `?start=1` når alt er valgt.
@@ -72,7 +72,7 @@ export default function Poker() {
   const timer = useRef(0);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
-  useEffect(() => { document.title = "Bakrommet"; }, []);
+  useEffect(() => { document.title = "Poker"; }, []);
   // Adressen ryddes, så en oppfriskning viser oppsettet i stedet for et nytt bord.
   useEffect(() => {
     if (dealtOnArrival()) window.history.replaceState(null, "", "/poker");
@@ -109,9 +109,9 @@ export default function Poker() {
   return (
     <main className="poker-shell">
       <header className="brandbar">
-        <button className="brand" onClick={leave} aria-label="Tilbake til bakrommet">
+        <button className="brand" onClick={leave} aria-label="Tilbake til poker">
           <span className="brand-mark poker-mark">♠</span>
-          <span>Bakrommet</span>
+          <span>Poker</span>
         </button>
         {game
           ? <button className="quiet-button" onClick={leave}>Reis deg</button>
@@ -135,7 +135,7 @@ export default function Poker() {
         )
         : (
           <StartWizard
-            lockedGame="bakrommet"
+            lockedGame="poker"
             initial={choice}
             initialName={name}
             intro={(

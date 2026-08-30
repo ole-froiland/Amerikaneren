@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
-import type { GameState, Room } from "./types.ts";
+import type { ChessState } from "./chess.ts";
+import type { GameKind, GameState, Room } from "./types.ts";
 
 const productionOrigin = "https://amerikaneren-spill.netlify.app";
 const apiOrigin = Capacitor.isNativePlatform() ? productionOrigin : "";
@@ -23,11 +24,12 @@ const post = <T>(body: object) => request<T>(endpoint, {
   body: JSON.stringify(body),
 });
 
-export const createRoom = (name: string) => post<{ room: Room; playerId: string }>({ action: "create", name });
+export const createRoom = (name: string, kind: GameKind = "amerikaneren") =>
+  post<{ room: Room; playerId: string }>({ action: "create", name, kind });
 export const joinRoom = (code: string, name: string) => post<{ room: Room; playerId: string }>({ action: "join", code, name });
 export const getRoom = (code: string) => request<Room>(`${endpoint}?code=${encodeURIComponent(code)}`);
 
-export const saveRoomGame = (code: string, playerId: string, game: GameState, baseVersion: number) =>
+export const saveRoomGame = (code: string, playerId: string, game: GameState | ChessState, baseVersion: number) =>
   post<{ room: Room; conflict: boolean }>({ action: "save", code, playerId, game, baseVersion });
 
 export type PollResult = Room | { unchanged: true; version: number };

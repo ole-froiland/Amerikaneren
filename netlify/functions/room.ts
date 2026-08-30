@@ -1,5 +1,6 @@
 import { getStore } from "@netlify/blobs";
-import type { Room } from "../../src/types.ts";
+import type { GameKind, Room } from "../../src/types.ts";
+import { roomLimit } from "../../src/types.ts";
 
 const headers = {
   "content-type": "application/json; charset=utf-8",
@@ -23,8 +24,8 @@ type Store = ReturnType<typeof getStore>;
 async function readRoom(store: Store, code: string): Promise<Room | null> {
   const room = await store.get(code, { type: "json" }) as Room | null;
   if (!room) return null;
-  // Rom lagret før versjonsfeltet fantes starter på 0.
-  return { ...room, version: room.version ?? 0 };
+  // Rom lagret før feltene fantes: versjonen starter på 0, og spillet er Amerikaneren.
+  return { ...room, kind: room.kind ?? "amerikaneren", version: room.version ?? 0 } as Room;
 }
 
 async function writeRoom(store: Store, room: Room): Promise<Room> {
@@ -72,20 +73,22 @@ export default async (request: Request) => {
 
   if (action === "create") {
     const name = cleanName(body.name);
+    const kind: GameKind = body.kind === "sjakk" ? "sjakk" : "amerikaneren";
     if (!name) return reply({ error: "Skriv inn navnet ditt." }, 400);
     let roomCode = "";
     do {
       roomCode = Array.from({ length: 5 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
     } while (await store.get(roomCode));
     const playerId = crypto.randomUUID();
-    const room: Room = {
+    const room = {
       code: roomCode,
+      kind,
       hostId: playerId,
       players: [{ id: playerId, name, joinedAt: Date.now() }],
       game: null,
       version: 0,
       updatedAt: Date.now(),
-    };
+    } as Room;
     const saved = await writeRoom(store, room);
     return reply({ room: saved, playerId }, 201);
   }
@@ -96,7 +99,7 @@ export default async (request: Request) => {
     const room = await readRoom(store, roomCode);
     if (!room) return reply({ error: "Fant ikke rommet. Sjekk koden." }, 404);
     if (room.game) return reply({ error: "Spillet har allerede startet." }, 409);
-    if (room.players.length >= 4) return reply({ error: "Rommet er fullt." }, 409);
+    if (room.players.length >= roomLimit(room.kind)) return reply({ error: "Rommet er fullt." }, 409);
     if (!name) return reply({ error: "Skriv inn navnet ditt." }, 400);
     const playerId = crypto.randomUUID();
     room.players.push({ id: playerId, name, joinedAt: Date.now() });

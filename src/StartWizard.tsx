@@ -3,18 +3,18 @@
  * spill, hvor mange, hvor tøffe, coach – og til slutt start eller vent på venner.
  *
  * Ett steg om gangen, og bare de stegene som gjelder for valget ditt. Forsiden
- * og Bakrommet bruker samme veiviser; /poker låser spillet og hopper over de to
+ * og Poker bruker samme veiviser; /poker låser spillet og hopper over de to
  * første stegene.
  */
 import { useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
-  DIFFICULTY_HINT,
   DIFFICULTY_NAME,
   MAX_HUMANS,
   MAX_OPPONENTS,
   MIN_HUMANS,
   MIN_OPPONENTS,
+  difficultyHint,
   gameAvailable,
   stepsFor,
   summaryOf,
@@ -72,7 +72,7 @@ export default function StartWizard(props: {
 
   const update = (patch: Partial<SetupChoice>) => {
     const merged = { ...choice, ...patch };
-    // Bakrommet finnes ikke med venner. Bytter du modus, følger spillet med.
+    // Poker finnes ikke med venner. Bytter du modus, følger spillet med.
     if (!gameAvailable(merged.mode, merged.game)) merged.game = "amerikaneren";
     setChoice(merged);
     props.onChoice?.(merged);
@@ -123,7 +123,7 @@ export default function StartWizard(props: {
   }
 
   if (step === "spill") {
-    const openTable = gameAvailable(choice.mode, "bakrommet");
+    const openTable = gameAvailable(choice.mode, "poker");
     return (
       <section className="panel setup-panel wizard-panel">
         {head}
@@ -139,12 +139,20 @@ export default function StartWizard(props: {
             <small>Stikkspillet for fire. By, finn makkeren din og spill dere til 52 poeng.</small>
           </button>
           <button
-            className={choice.game === "bakrommet" ? "chosen" : ""}
-            aria-pressed={choice.game === "bakrommet"}
-            disabled={!openTable}
-            onClick={() => { update({ game: "bakrommet" }); forward(); }}
+            className={choice.game === "sjakk" ? "chosen" : ""}
+            aria-pressed={choice.game === "sjakk"}
+            onClick={() => { update({ game: "sjakk" }); forward(); }}
           >
-            <b>Bakrommet</b>
+            <b>Sjakk</b>
+            <small>Vanlige regler, hele veien til matt. Mot bot på tre nivåer, eller mot en venn.</small>
+          </button>
+          <button
+            className={choice.game === "poker" ? "chosen" : ""}
+            aria-pressed={choice.game === "poker"}
+            disabled={!openTable}
+            onClick={() => { update({ game: "poker" }); forward(); }}
+          >
+            <b>Poker</b>
             <small>
               {openTable
                 ? "Texas hold'em med falske sjetonger. Bots på tre nivåer, og en coach som ser deg i kortene."
@@ -157,7 +165,7 @@ export default function StartWizard(props: {
   }
 
   if (step === "antall") {
-    const table = choice.game === "bakrommet";
+    const table = choice.game === "poker";
     const value = table ? choice.opponents : choice.humans;
     const options = table ? range(MIN_OPPONENTS, MAX_OPPONENTS) : range(MIN_HUMANS, MAX_HUMANS);
     return (
@@ -193,8 +201,8 @@ export default function StartWizard(props: {
     return (
       <section className="panel setup-panel wizard-panel">
         {head}
-        <h1>Hvor tøffe skal de være?</h1>
-        <p className="muted">Nivået gjelder alle botene rundt bordet.</p>
+        <h1>{choice.game === "sjakk" ? "Hvor sterk skal boten være?" : "Hvor tøffe skal de være?"}</h1>
+        <p className="muted">{choice.game === "sjakk" ? "Du spiller hvit og begynner." : "Nivået gjelder alle botene rundt bordet."}</p>
         <div className="level-grid">
           {(["lett", "middels", "vanskelig"] as Difficulty[]).map((option) => (
             <button
@@ -203,7 +211,7 @@ export default function StartWizard(props: {
               aria-pressed={option === choice.level}
               onClick={() => { update({ level: option }); forward(); }}
             >
-              <b>{DIFFICULTY_NAME[option]}</b><small>{DIFFICULTY_HINT[option]}</small>
+              <b>{DIFFICULTY_NAME[option]}</b><small>{difficultyHint(choice.game, option)}</small>
             </button>
           ))}
         </div>
@@ -272,7 +280,7 @@ export default function StartWizard(props: {
       <h1>{alone ? "Klar?" : invited ? "Du er invitert" : "Samle bordet"}</h1>
       <p className="muted">
         {alone
-          ? "Alt er valgt. Kortene ligger og venter."
+          ? choice.game === "sjakk" ? "Alt er valgt. Brikkene står oppstilt." : "Alt er valgt. Kortene ligger og venter."
           : invited
             ? `Skriv navnet ditt, så er du inne i rom ${code}.`
             : "Alle åpner appen på sin mobil. Én lager rommet, resten får lenken."}
@@ -302,7 +310,8 @@ export default function StartWizard(props: {
         </>
       )}
       {props.error && <p className="error-message">{props.error}</p>}
-      {alone && choice.game === "bakrommet" && <p className="tiny">Ingen penger bytter hender. Sjetongene er bare tall.</p>}
+      {alone && choice.game === "poker" && <p className="tiny">Ingen penger bytter hender. Sjetongene er bare tall.</p>}
+      {!alone && choice.game === "sjakk" && <p className="tiny">Den som lager rommet spiller hvit.</p>}
     </section>
   );
 }

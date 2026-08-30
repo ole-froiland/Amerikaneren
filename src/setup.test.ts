@@ -24,20 +24,20 @@ test("Amerikaneren with friends adds the player count", () => {
   );
 });
 
-test("Bakrommet adds count, difficulty and coach", () => {
+test("Poker adds count, difficulty and coach", () => {
   assert.deepEqual(
-    stepsFor(choiceWith({ game: "bakrommet" })),
+    stepsFor(choiceWith({ game: "poker" })),
     ["modus", "spill", "antall", "niva", "coach", "klar"],
   );
 });
 
 test("a locked game drops the two first steps", () => {
-  assert.deepEqual(stepsFor(choiceWith({ game: "bakrommet" }), true), ["antall", "niva", "coach", "klar"]);
+  assert.deepEqual(stepsFor(choiceWith({ game: "poker" }), true), ["antall", "niva", "coach", "klar"]);
 });
 
-test("Bakrommet is only available alone", () => {
-  assert.equal(gameAvailable("alene", "bakrommet"), true);
-  assert.equal(gameAvailable("venner", "bakrommet"), false);
+test("Poker is only available alone", () => {
+  assert.equal(gameAvailable("alene", "poker"), true);
+  assert.equal(gameAvailable("venner", "poker"), false);
   assert.equal(gameAvailable("venner", "amerikaneren"), true);
 });
 
@@ -65,18 +65,23 @@ test("counts outside the table size are pulled back in", () => {
 });
 
 test("junk values fall back instead of throwing", () => {
-  const saved = store({ [SETUP_KEYS.humans]: "tre", [SETUP_KEYS.level]: "umulig", [SETUP_KEYS.game]: "sjakk" });
+  const saved = store({ [SETUP_KEYS.humans]: "tre", [SETUP_KEYS.level]: "umulig", [SETUP_KEYS.game]: "ludo" });
   const choice = readChoice(saved.read);
   assert.equal(choice.humans, DEFAULT_SETUP.humans);
   assert.equal(choice.level, DEFAULT_SETUP.level);
   assert.equal(choice.game, "amerikaneren");
 });
 
-test("Bakrommet with friends is not a combination we can restore", () => {
-  const saved = store({ [SETUP_KEYS.mode]: "venner", [SETUP_KEYS.game]: "bakrommet" });
+test("Poker with friends is not a combination we can restore", () => {
+  const saved = store({ [SETUP_KEYS.mode]: "venner", [SETUP_KEYS.game]: "poker" });
   const choice = readChoice(saved.read);
   assert.equal(choice.mode, "venner");
   assert.equal(choice.game, "amerikaneren");
+});
+
+test("the old name for poker still points at the poker table", () => {
+  const saved = store({ [SETUP_KEYS.game]: "bakrommet" });
+  assert.equal(readChoice(saved.read).game, "poker");
 });
 
 test("what is written comes back unchanged", () => {
@@ -88,10 +93,25 @@ test("what is written comes back unchanged", () => {
 
 test("the summary names what you picked", () => {
   assert.deepEqual(
-    summaryOf(choiceWith({ game: "bakrommet", opponents: 3, level: "vanskelig", coach: true })),
-    ["Bakrommet", "mot 3", "vanskelig", "coach på"],
+    summaryOf(choiceWith({ game: "poker", opponents: 3, level: "vanskelig", coach: true })),
+    ["Poker", "mot 3", "vanskelig", "coach på"],
   );
   assert.deepEqual(summaryOf(choiceWith({ mode: "alene" })), ["Amerikaneren", "du + 3 bots"]);
   assert.deepEqual(summaryOf(choiceWith({ mode: "venner", humans: 3 })), ["Amerikaneren", "3 spillere + 1 bot"]);
   assert.deepEqual(summaryOf(choiceWith({ mode: "venner", humans: 4 })), ["Amerikaneren", "fullt bord"]);
+});
+
+test("chess asks about the bot only when you play alone", () => {
+  assert.deepEqual(stepsFor(choiceWith({ game: "sjakk", mode: "alene" })), ["modus", "spill", "niva", "klar"]);
+  assert.deepEqual(stepsFor(choiceWith({ game: "sjakk", mode: "venner" })), ["modus", "spill", "klar"]);
+});
+
+test("chess can be played with friends, poker cannot", () => {
+  assert.equal(gameAvailable("venner", "sjakk"), true);
+  assert.equal(gameAvailable("venner", "poker"), false);
+});
+
+test("the chess summary says who is across the board", () => {
+  assert.deepEqual(summaryOf(choiceWith({ game: "sjakk", mode: "alene", level: "lett" })), ["Sjakk", "mot bot", "lett"]);
+  assert.deepEqual(summaryOf(choiceWith({ game: "sjakk", mode: "venner" })), ["Sjakk", "to spillere"]);
 });

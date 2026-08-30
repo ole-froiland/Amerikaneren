@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import StartWizard from "./StartWizard.tsx";
 import type { StartRequest } from "./StartWizard.tsx";
 import { createRoom, inviteLink, joinRoom, pollRoom, saveRoomGame } from "./api.ts";
-import { MAX_HUMANS, loadChoice, saveChoice } from "./setup.ts";
+import { loadChoice, saveChoice } from "./setup.ts";
 import type { SetupChoice } from "./setup.ts";
 import {
   RANK_NAME,
@@ -30,7 +30,12 @@ import {
   playCard,
   trickWinner,
 } from "./game.ts";
-import type { Card, GameState, Room, Suit } from "./types.ts";
+import type { ChessState } from "./chess.ts";
+import type { Card, GameKind, GameState, Room, Suit } from "./types.ts";
+import { roomLimit } from "./types.ts";
+
+/** Sjakkbrettet lastes først når noen faktisk skal spille sjakk. */
+const ChessBoard = lazy(() => import("./ChessBoard.tsx"));
 
 type Screen = "home" | "lobby" | "game" | "rules";
 
@@ -51,6 +56,7 @@ const storedName = () => {
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [game, setGame] = useState<GameState | null>(null);
+  const [chess, setChess] = useState<ChessState | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [playerId, setPlayerId] = useState("");
   const [name, setName] = useState(storedName);
@@ -95,6 +101,8 @@ export default function App() {
     return index >= 0 ? index : 0;
   }, [game, playerId, room]);
 
+  const kind: GameKind = room ? room.kind : choice.game === "sjakk" ? "sjakk" : "amerikaneren";
+
   const applyRoom = useCallback((fresh: Room, force = false) => {
     if (!force && fresh.version <= versionRef.current) {
       if (fresh.version === versionRef.current) setRoom(fresh);
@@ -103,28 +111,27 @@ export default function App() {
     versionRef.current = fresh.version;
     changedAtRef.current = Date.now();
     setRoom(fresh);
-    if (fresh.game) {
-      const previous = gameRef.current;
-      if (!previous || fresh.game.round > previous.round) beginDeal(fresh.game.round);
-      gameRef.current = fresh.game;
-      setGame(fresh.game);
+    if (!fresh.game) return;
+    if (fresh.kind === "sjakk") {
+      setChess(fresh.game);
       setScreen("game");
+      return;
     }
+    const previous = gameRef.current;
+    if (!previous || fresh.game.round > previous.round) beginDeal(fresh.game.round);
+    gameRef.current = fresh.game;
+    setGame(fresh.game);
+    setScreen("game");
   }, [beginDeal]);
 
-  const commitGame = useCallback((next: GameState, forceDeal = false) => {
-    const previous = gameRef.current;
-    if (forceDeal || !previous || next.round > previous.round) beginDeal(next.round);
-    gameRef.current = next;
-    setGame(next);
-    setSelected([]);
+  /** Sender tilstanden til rommet. Ett lagringskall om gangen, ellers kan to trekk kollidere. */
+  const pushToRoom = useCallback((next: GameState | ChessState) => {
     const current = roomRef.current;
     const id = playerIdRef.current;
     if (!current || !id) return;
     const base = versionRef.current;
     versionRef.current = base + 1;
     changedAtRef.current = Date.now();
-    // Ett lagringskall om gangen, ellers kan to trekk kollidere på serveren.
     queueRef.current = queueRef.current.then(async () => {
       try {
         const result = await saveRoomGame(current.code, id, next, base);
@@ -139,7 +146,21 @@ export default function App() {
         setError((reason as Error).message);
       }
     });
-  }, [applyRoom, beginDeal]);
+  }, [applyRoom]);
+
+  const commitChess = useCallback((next: ChessState) => {
+    setChess(next);
+    pushToRoom(next);
+  }, [pushToRoom]);
+
+  const commitGame = useCallback((next: GameState, forceDeal = false) => {
+    const previous = gameRef.current;
+    if (forceDeal || !previous || next.round > previous.round) beginDeal(next.round);
+    gameRef.current = next;
+    setGame(next);
+    setSelected([]);
+    pushToRoom(next);
+  }, [beginDeal, pushToRoom]);
 
   /** Bare verten kjører bots og rydder stikk – ellers ville alle fire spilt samme trekk. */
   const canDrive = useCallback(() => {
@@ -199,10 +220,10 @@ export default function App() {
     setScreen("game");
   };
 
-  const handleCreate = async (player: string) => {
+  const handleCreate = async (player: string, forGame: GameKind = "amerikaneren") => {
     setBusy(true); setError("");
     try {
-      const result = await createRoom(player);
+      const result = await createRoom(player, forGame);
       versionRef.current = result.room.version;
       changedAtRef.current = Date.now();
       setRoom(result.room); setPlayerId(result.playerId); setScreen("lobby");
@@ -221,15 +242,21 @@ export default function App() {
     finally { setBusy(false); }
   };
 
-  /** Siste steg i veiviseren: start, lag rom, eller gå videre til Bakrommet. */
+  /** Siste steg i veiviseren: start, lag rom, eller gå videre til Poker. */
   const handleStart = (request: StartRequest) => {
     setChoice(request.choice);
     saveChoice(request.choice);
     setName(request.name);
-    if (request.choice.game === "bakrommet") {
-      // Bakrommet har sin egen adresse, så pokerkoden lastes først når man skal dit.
+    if (request.choice.game === "poker") {
+      // Poker har sin egen adresse, så pokerkoden lastes først når man skal dit.
       try { window.localStorage.setItem(NAME_KEY, request.name); } catch { /* privat modus */ }
       window.location.assign("/poker?start=1");
+      return;
+    }
+    if (request.choice.game === "sjakk") {
+      if (request.action === "alene") { setGame(null); setChess(null); setRoom(null); setPlayerId(""); versionRef.current = 0; setScreen("game"); }
+      else if (request.action === "lag-rom") void handleCreate(request.name, "sjakk");
+      else void handleJoin(request.code, request.name);
       return;
     }
     if (request.action === "alene") startSolo(request.name);
@@ -239,6 +266,8 @@ export default function App() {
 
   const startRoomGame = () => {
     if (!room || room.players.length < 2) return;
+    // Sjakkbrettet setter opp partiet selv – det er der brikkene bor.
+    if (room.kind === "sjakk") { setScreen("game"); return; }
     const players = createPlayers(room.players.map((player) => player.name)).map((player, index) => ({
       ...player,
       id: room.players[index]?.id ?? player.id,
@@ -255,7 +284,7 @@ export default function App() {
     setDealingRound(null);
     // Invitasjonen er brukt opp – neste gang starter veiviseren på første steg.
     setInvited("");
-    setGame(null); setRoom(null); setPlayerId(""); setSelected([]); setError(""); setScreen("home");
+    setGame(null); setChess(null); setRoom(null); setPlayerId(""); setSelected([]); setError(""); setScreen("home");
   };
 
   return (
@@ -281,9 +310,30 @@ export default function App() {
           onRules={() => setScreen("rules")}
         />
       )}
-      {screen === "lobby" && room && <Lobby room={room} playerId={playerId} seats={choice.humans} onStart={startRoomGame} />}
+      {screen === "lobby" && room && (
+        <Lobby
+          room={room}
+          playerId={playerId}
+          seats={room.kind === "sjakk" ? roomLimit(room.kind) : choice.humans}
+          onStart={startRoomGame}
+        />
+      )}
       {screen === "rules" && <Rules onPlay={() => startSolo()} />}
-      {screen === "game" && game && (
+      {screen === "game" && kind === "sjakk" && (
+        <Suspense fallback={<section className="panel setup-panel"><p className="muted">Setter opp brettet…</p></section>}>
+          <ChessBoard
+            state={chess}
+            humans={room ? room.players.slice(0, 2).map((player) => ({ id: player.id, name: player.name })) : [{ id: "du", name: name.trim() || "Du" }]}
+            myId={room ? playerId : "du"}
+            difficulty={choice.level}
+            canSeed={!room || room.hostId === playerId}
+            online={Boolean(room)}
+            roomCode={room?.code}
+            onCommit={commitChess}
+          />
+        </Suspense>
+      )}
+      {screen === "game" && kind === "amerikaneren" && game && (
         <GameTable
           game={game}
           ownIndex={ownIndex}
@@ -314,8 +364,11 @@ export default function App() {
 
 function Lobby({ room, playerId, seats, onStart }: { room: Room; playerId: string; seats: number; onStart: () => void }) {
   const isHost = room.hostId === playerId;
-  // Verten valgte hvor mange menneskeplasser bordet skal ha. Resten er bots.
-  const humans = Math.min(MAX_HUMANS, Math.max(seats, room.players.length));
+  // Verten valgte hvor mange menneskeplasser bordet skal ha. Resten er bots –
+  // bortsett fra i sjakk, der brettet krever to mennesker.
+  const limit = roomLimit(room.kind);
+  const humans = Math.min(limit, Math.max(seats, room.players.length));
+  const missing = humans - room.players.length;
   const [copied, setCopied] = useState("");
   const link = inviteLink(room.code);
 
@@ -346,19 +399,22 @@ function Lobby({ room, playerId, seats, onStart }: { room: Room; playerId: strin
       <p className="muted">Send lenken – vennene dine kommer rett inn i rommet.</p>
       <div className="player-list">
         {room.players.map((player, index) => <div className="lobby-player" key={player.id}><span>{index + 1}</span><b>{player.name}</b>{player.id === room.hostId && <small>Vert</small>}<i>✓</i></div>)}
-        {Array.from({ length: humans - room.players.length }, (_, i) => <div className="lobby-player empty" key={`venter-${i}`}><span>{room.players.length + i + 1}</span><b>Venter…</b></div>)}
-        {Array.from({ length: MAX_HUMANS - humans }, (_, i) => <div className="lobby-player bot" key={`bot-${i}`}><span>{humans + i + 1}</span><b>Bot</b></div>)}
+        {Array.from({ length: missing }, (_, i) => <div className="lobby-player empty" key={`venter-${i}`}><span>{room.players.length + i + 1}</span><b>Venter…</b></div>)}
+        {Array.from({ length: limit - humans }, (_, i) => <div className="lobby-player bot" key={`bot-${i}`}><span>{humans + i + 1}</span><b>Bot</b></div>)}
       </div>
       {isHost ? (
         <>
           <button className="primary-cta" disabled={room.players.length < 2} onClick={onStart}>Start spill</button>
           <p className="tiny">
-            {room.players.length < humans
-              ? `Venter på ${humans - room.players.length} til. Du kan starte når som helst – ledige plasser fylles av bots.`
-              : "Ledige plasser fylles av bots."}
+            {room.kind === "sjakk"
+              ? (missing ? "Sjakk er to om brettet. Venter på motstanderen din." : "Dere er to. Du spiller hvit.")
+              : missing
+                ? `Venter på ${missing} til. Du kan starte når som helst – ledige plasser fylles av bots.`
+                : "Ledige plasser fylles av bots."}
           </p>
         </>
       ) : <p className="waiting"><span /> Venter på at verten starter</p>}
+      {room.kind === "sjakk" && !isHost && <p className="tiny">Du spiller svart.</p>}
     </section>
   );
 }

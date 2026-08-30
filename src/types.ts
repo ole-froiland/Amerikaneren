@@ -66,17 +66,32 @@ export interface GameState {
   winnerIndex: number | null;
 }
 
+import type { ChessState } from "./chess.ts";
+
+/** Spillene som kan spilles i et rom. Poker har ingen onlinevariant. */
+export type GameKind = "amerikaneren" | "sjakk";
+
 export interface RoomPlayer {
   id: string;
   name: string;
   joinedAt: number;
 }
 
-export interface Room {
+interface RoomBase {
   code: string;
   hostId: string;
   players: RoomPlayer[];
-  game: GameState | null;
   version: number;
   updatedAt: number;
 }
+
+/**
+ * Rommet vet hvilket spill det er, og tilstanden følger av det. Serveren rører
+ * aldri innholdet – den lagrer det som kom inn og teller versjonen opp.
+ */
+export type Room =
+  | (RoomBase & { kind: "amerikaneren"; game: GameState | null })
+  | (RoomBase & { kind: "sjakk"; game: ChessState | null });
+
+/** Så mange mennesker det er plass til. Ledige plasser i Amerikaneren tas av bots. */
+export const roomLimit = (kind: GameKind) => (kind === "sjakk" ? 2 : 4);

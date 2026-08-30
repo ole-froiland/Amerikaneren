@@ -1,17 +1,41 @@
 # Amerikaneren
 
-En mobil-først app for det norske kortspillet Amerikaneren, med pokerbordet Bakrommet ved siden av. Spill alene mot bots, eller opprett et Netlify-rom og inviter venner med en delbar lenke.
+En mobil-først app med tre spill: kortspillet Amerikaneren, sjakk og et pokerbord. Spill alene mot bots, eller opprett et Netlify-rom og inviter venner med en delbar lenke.
 
 ## Oppsettet
 
 Forsiden er en veiviser med ett valg om gangen: alene eller med venner, hvilket spill, hvor mange
 spillere, hvor tøffe botene skal være, om coachen skal være på – og til slutt start eller vent på
 venner i lobbyen. Bare stegene som gjelder for valget ditt vises: Amerikaneren spør om antall bare
-når du spiller med venner, og nivå og coach hører til Bakrommet.
+når du spiller med venner, sjakk spør om botnivå bare når du spiller alene, og coachen hører til
+pokerbordet. Poker kan foreløpig bare spilles alene.
 
 Reglene ligger i `stepsFor()` i `src/setup.ts` og er testet i `src/setup.test.ts`. Selve skallet er
 `src/StartWizard.tsx`, som både forsiden og `/poker` bruker – pokersiden låser spillet og hopper over
-de to første stegene. Valgene huskes i localStorage.
+de to første stegene. Valgene huskes i localStorage. Nøkkelen for spillet heter fortsatt
+`amerikaneren-spill`, og verdien `bakrommet` fra før navnebyttet leses som poker.
+
+## Sjakk
+
+Vanlige regler hele veien: rokade begge veier, en passant, promotering til fire brikker, sjakk, matt
+og patt. Remis meldes ved samme stilling tre ganger, femti trekk uten slag eller bondetrekk, og når
+ingen har nok materiell til å sette matt. Trekkene skrives på norsk notasjon (`Sf3`, `exd5`, `0-0`,
+`Dh4#`) i listen under brettet.
+
+Motoren i `src/chess.ts` er rene funksjoner uten React. At reglene faktisk stemmer er låst med
+perft-tester i `src/chess.test.ts`: antall trekkfølger fra kjente stillinger telles opp og
+sammenlignes med fasiten (20, 400 og 8902 fra utgangsstillingen, 2039 fra Kiwipete, og to stillinger
+til som er laget for å avsløre feil i binding, rokade og promotering).
+
+Boten er negamax med alfa-beta, slagsortering og en kort slagveksling på slutten, så den ikke slutter
+å regne midt i et bytte. Nivåene styrer hvor dypt den ser: lett ett trekk, middels to, vanskelig tre –
+og lett slenger ut et tilfeldig trekk i tre av ti tilfeller, så det går an å vinne. Vurderingen er
+materiell pluss standardtabeller for hvor brikkene står godt. Et trekk tar under et sekund, og det er
+testet.
+
+Mot en venn deler dere samme rom som i Amerikaneren: verten spiller hvit, den som blir med spiller
+svart, og brettet snus så dine egne brikker står nærmest. Brettet lastes først når noen faktisk skal
+spille sjakk.
 
 ## Lokal utvikling
 
@@ -33,6 +57,9 @@ npm run build
 Netlify-oppsettet ligger i `netlify.toml`. Rom lagres i Netlify Blobs gjennom funksjonen i `netlify/functions/room.ts`.
 
 ## Slik synkroniseres onlinerom
+
+Rommet vet hvilket spill det gjelder (`kind`), og serveren lagrer tilstanden uten å røre innholdet.
+Det avgjør også hvor mange som får plass: fire i Amerikaneren, to i sjakk.
 
 Hver romtilstand har et `version`-tall som teller oppover for hver endring.
 

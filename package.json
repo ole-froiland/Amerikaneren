@@ -12,7 +12,7 @@
     "ios:sync": "npm run build && cap sync ios",
     "ios:open": "npm run ios:sync && cap open ios",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/game.test.ts src/poker.test.ts src/setup.test.ts",
+    "test": "node --experimental-strip-types --test src/game.test.ts src/poker.test.ts src/setup.test.ts src/chess.test.ts",
     "lint": "eslint src netlify vite.config.ts"
   },
   "dependencies": {
