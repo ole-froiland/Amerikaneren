@@ -5,6 +5,7 @@ import {
   accuracyOf,
   advantage,
   analyseAt,
+  answerDraw,
   applyChessMove,
   botChessMove,
   createChessGame,
@@ -12,6 +13,7 @@ import {
   describeLast,
   gaugeLabel,
   gaugeShare,
+  hintMove,
   inCheck,
   legalMoves,
   make,
@@ -19,7 +21,9 @@ import {
   parseFen,
   positionOf,
   pseudoMoves,
+  offerDraw,
   reportFrom,
+  resign,
   reviewMove,
   sameMove,
   squareFromName,
@@ -273,7 +277,8 @@ test("every level plays a legal move, and the hardest one answers in time", () =
     const started = Date.now();
     const chosen = botChessMove(state);
     assert.ok(legalMoves(positionOf(state)).some((option) => sameMove(option, chosen!)), `${level} spilte ulovlig`);
-    assert.ok(Date.now() - started < 1500, `${level} brukte ${Date.now() - started} ms`);
+    // Det høyeste nivået har 1,5 sekund å tenke på; resten er raskere.
+    assert.ok(Date.now() - started < 2000, `${level} brukte ${Date.now() - started} ms`);
   }
 });
 
@@ -300,7 +305,7 @@ test("the review splits the game into phases", () => {
 });
 
 test("accuracy falls as the loss grows", () => {
-  const at = (loss: number) => accuracyOf([{ by: "hvit", loss, phase: "midtspill" }]);
+  const at = (loss: number) => accuracyOf([{ by: "hvit", index: 0, text: "e4", loss, phase: "midtspill" }]);
   assert.equal(at(0), 100);
   assert.ok(at(50) > at(150) && at(150) > at(400));
   assert.ok(at(400) < 20);
@@ -320,4 +325,55 @@ test("the review sees the move that allowed mate, and gets through a game quickl
   assert.ok(report.hvit.blunders >= 1, `å slippe inn matt skal telle som tabbe: ${JSON.stringify(losses)}`);
   assert.ok(report.svart.total.score > report.hvit.total.score);
   assert.ok(spent < 2000, `gjennomgangen brukte ${spent} ms på seks trekk`);
+});
+
+test("giving up hands the game to the other side", () => {
+  const state = resign(game(START_FEN), "hvit");
+  assert.equal(state.outcome, "oppgitt");
+  assert.equal(state.winner, "svart");
+  // Et avsluttet parti tar ikke imot flere trekk.
+  assert.equal(applyChessMove(state, move("e2", "e4")), state);
+});
+
+test("a draw offer stands until it is answered or the position moves on", () => {
+  const offered = offerDraw(game(START_FEN), "hvit");
+  assert.equal(offered.drawOffer, "hvit");
+
+  assert.equal(answerDraw(offered, true).outcome, "avtalt");
+  assert.equal(answerDraw(offered, true).winner, null);
+
+  const declined = answerDraw(offered, false);
+  assert.equal(declined.drawOffer, null);
+  assert.equal(declined.outcome, "spiller");
+
+  // Flytter motparten, er tilbudet borte av seg selv.
+  assert.equal(applyChessMove(offered, move("e2", "e4")).drawOffer, null);
+});
+
+test("the hint names the move the coach would play", () => {
+  const state = game("4k3/8/8/3q4/4P3/8/8/4K3 w - - 0 1");
+  assert.equal(moveText(positionOf(state), hintMove(state)!), "exd5");
+  assert.equal(hintMove(resign(state, "hvit")), null);
+});
+
+test("the hardest level finds a mate in two", () => {
+  // Tårnstige: 1.Tb8+ Kh7 2.Ta7 matt. Fast klokke, så testen ikke avhenger av maskinen.
+  let state = game("7k/8/8/8/8/8/1R6/R3K3 w - - 0 1", "umulig");
+  for (let i = 0; i < 4 && state.outcome === "spiller"; i += 1) {
+    const chosen = botChessMove(state, () => 0.5, () => 0);
+    state = applyChessMove(state, chosen!);
+  }
+  assert.equal(state.outcome, "matt");
+  assert.equal(state.winner, "hvit");
+});
+
+test("the review points at the best and the worst move in each phase", () => {
+  let state = game(START_FEN, "middels");
+  for (const [from, to] of [["e2", "e4"], ["e7", "e5"], ["g1", "f3"], ["d8", "h4"], ["f3", "h4"], ["b8", "c6"]]) {
+    state = applyChessMove(state, move(from, to));
+  }
+  const report = reportFrom(state.history.map((_, index) => analyseAt(state, index)!));
+  assert.equal(report.svart.åpning.worst?.text, "Dh4");
+  assert.ok(report.svart.åpning.worst!.loss > report.svart.åpning.best!.loss);
+  assert.equal(report.hvit.åpning.best?.loss, 0);
 });

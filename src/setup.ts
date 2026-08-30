@@ -55,8 +55,8 @@ export interface SetupChoice {
   /** Hvor mange bots du spiller mot i Poker. */
   opponents: number;
   level: Difficulty;
+  /** Coachen dømmer trekkene dine – og viser kastede kort i poker. */
   coach: boolean;
-  showFolded: boolean;
 }
 
 export const DEFAULT_SETUP: SetupChoice = {
@@ -66,7 +66,6 @@ export const DEFAULT_SETUP: SetupChoice = {
   opponents: 3,
   level: "middels",
   coach: false,
-  showFolded: true,
 };
 
 /** Poker har ingen onlinerom, så det bordet kan bare spilles alene. */
@@ -125,7 +124,6 @@ export const SETUP_KEYS = {
   opponents: "bakrommet-motstandere",
   level: "bakrommet-niva",
   coach: "bakrommet-coach",
-  folded: "bakrommet-kastede",
 } as const;
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
@@ -151,8 +149,6 @@ export function readChoice(read: (key: string) => string | null): SetupChoice {
     level: LEVELS.includes(saved as Difficulty) ? saved as Difficulty : DEFAULT_SETUP.level,
     // Coachen er av som standard – den er der for den som vil ha den.
     coach: read(SETUP_KEYS.coach) === "på",
-    // Kastede kort vises som standard – det er slik man lærer av hendene.
-    showFolded: read(SETUP_KEYS.folded) !== "av",
   };
 }
 
@@ -163,7 +159,6 @@ export function writeChoice(choice: SetupChoice, write: (key: string, value: str
   write(SETUP_KEYS.opponents, String(choice.opponents));
   write(SETUP_KEYS.level, choice.level);
   write(SETUP_KEYS.coach, choice.coach ? "på" : "av");
-  write(SETUP_KEYS.folded, choice.showFolded ? "på" : "av");
 }
 
 /** Leser valgene fra forrige gang. Privat modus uten lagring gir standardvalgene. */

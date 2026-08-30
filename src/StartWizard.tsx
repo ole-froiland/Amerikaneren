@@ -221,24 +221,24 @@ export default function StartWizard(props: {
     return (
       <section className="panel setup-panel wizard-panel">
         {head}
-        <h1>Vil du ha hjelp?</h1>
-        <label className="switch-row">
-          <b>Coach</b>
-          <small>
-            {board
-              ? "Merker hvert trekk du gjør, fra briljant til tabbe, og peker på det bedre trekket."
-              : "Går gjennom valgene dine etter hver hånd og sier om prisen var riktig."}
-          </small>
-          <input type="checkbox" checked={choice.coach} onChange={(event) => update({ coach: event.target.checked })} />
-        </label>
-        {!board && (
-          <label className="switch-row">
-            <b>Vis kastede kort</b>
-            <small>Etter showdown ser du hendene til dem som kastet seg.</small>
-            <input type="checkbox" checked={choice.showFolded} onChange={(event) => update({ showFolded: event.target.checked })} />
-          </label>
-        )}
-        <button className="primary-cta" onClick={forward}>Videre</button>
+        <h1>Vil du ha coach?</h1>
+        <div className="choice-grid">
+          <button
+            className={choice.coach ? "chosen" : ""}
+            aria-pressed={choice.coach}
+            onClick={() => { update({ coach: true }); forward(); }}
+          >
+            <b>Ja</b>
+            <small>{board ? "Merker trekkene dine og peker på de bedre" : "Går gjennom hendene dine etterpå"}</small>
+          </button>
+          <button
+            className={choice.coach ? "" : "chosen"}
+            aria-pressed={!choice.coach}
+            onClick={() => { update({ coach: false }); forward(); }}
+          >
+            <b>Nei</b>
+          </button>
+        </div>
       </section>
     );
   }

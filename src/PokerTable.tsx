@@ -124,7 +124,7 @@ export default function Poker() {
             game={game}
             raising={raising}
             showOdds={showOdds}
-            showFolded={choice.showFolded}
+            showFolded={choice.coach}
             coach={choice.coach}
             onToggleOdds={() => setShowOdds((on) => !on)}
             onRaising={setRaising}
@@ -473,17 +473,6 @@ function HandOver({ game, showFolded, coach, onNextHand, onRestart }: { game: Po
             <span>{coachSummary(notes)}</span>
           </p>
           {notes.length > 0 && (
-            <p className="coach-key">
-              Slik leser du det: <b>«må vinne oftere enn X»</b> er hva prisen krever,
-              <b> «din vant Y»</b> er hånden din. Er Y størst, var valget riktig.
-              <span>
-                Kravet flytter seg fordi det følger innsatsen, ikke kortene: satser de ¼ av
-                potten trenger du 17 %, ved halve potten 25 %, ved hele potten 33 %.
-                Stor innsats er dyr å se, liten er billig.
-              </span>
-            </p>
-          )}
-          {notes.length > 0 && (
             <div className="coach-list">
               {notes.map((note, index) => (
                 <div className={`coach-note ${note.verdict}`} key={index}>
@@ -496,12 +485,7 @@ function HandOver({ game, showFolded, coach, onNextHand, onRestart }: { game: Po
               ))}
             </div>
           )}
-          <p className="coach-foot">
-            Alt er regnet ut fra kortene, prisen og hvor mange som var med i det øyeblikket du
-            valgte – ikke fra hvordan hånden endte. Et riktig priset syn er riktig selv om du
-            tapte det. Sjansen antar at motstanderne har tilfeldige kort, så den er litt
-            optimistisk når noen presser deg.
-          </p>
+          <p className="coach-foot">Dømt ut fra kortene og prisen i øyeblikket – ikke fra hvordan hånden endte.</p>
         </div>
       )}
 

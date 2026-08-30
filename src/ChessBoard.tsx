@@ -15,6 +15,7 @@ import {
   VERDICT_NAME,
   advantage,
   analyseAt,
+  answerDraw,
   applyChessMove,
   botChessMove,
   createChessGame,
@@ -22,13 +23,16 @@ import {
   describeLast,
   gaugeLabel,
   gaugeShare,
+  hintMove,
   movesFrom,
+  offerDraw,
   positionOf,
   reportFrom,
+  resign,
   reviewMove,
   squareName,
 } from "./chess.ts";
-import type { Advantage, ChessMove, ChessPiece, ChessState, CoachNote, PieceColor, PieceType, PlayerReport, PlyLoss } from "./chess.ts";
+import type { Advantage, ChessMove, ChessPiece, ChessState, CoachNote, PhaseScore, PieceColor, PieceType, PlayerReport, PlyLoss } from "./chess.ts";
 import type { Difficulty } from "./setup.ts";
 
 /** Litt pause før boten svarer, så trekket rekker å synke inn. */
@@ -54,11 +58,14 @@ export default function ChessBoard(props: {
   const [judged, setJudged] = useState<{ note: CoachNote; ply: number; square: number } | null>(null);
   // Gjennomgangen regnes ett trekk om gangen etter partiet, så siden ikke fryser.
   const [analysis, setAnalysis] = useState<{ forPly: number; losses: PlyLoss[] }>({ forPly: -1, losses: [] });
+  const [hint, setHint] = useState<{ move: ChessMove; ply: number } | null>(null);
+  const [givingUp, setGivingUp] = useState(false);
   const timer = useRef(0);
   const sheet = useRef<HTMLDivElement>(null);
   const ply = state?.history.length ?? -1;
   const from = pick?.ply === ply ? pick.square : null;
   const promotion = pending?.ply === ply ? pending.move : null;
+  const shown = hint?.ply === ply ? hint.move : null;
   // Merket på brettet blir stående mens motstanderen svarer, og forsvinner når du
   // flytter igjen. Linjen under brettet omtaler alltid siste trekk, så dommen står
   // der bare når det er ditt eget trekk som ligger sist.
@@ -89,6 +96,19 @@ export default function ChessBoard(props: {
     () => (state && from !== null && yourTurn ? movesFrom(positionOf(state), from) : []),
     [state, from, yourTurn],
   );
+
+  // Boten tar stilling til remis: den sier ja hvis den ikke står bedre.
+  useEffect(() => {
+    if (!state || state.outcome !== "spiller" || !state.drawOffer) return;
+    const asked = state.players.find((player) => player.color !== state.drawOffer);
+    if (!asked?.isBot) return;
+    const id = window.setTimeout(() => {
+      const view = advantage(state);
+      const theirs = asked.color === "hvit" ? view.score : -view.score;
+      onCommit(answerDraw(state, theirs <= 20));
+    }, 700);
+    return () => window.clearTimeout(id);
+  }, [state, onCommit]);
 
   // Boten svarer når det er dens tur.
   useEffect(() => {
@@ -137,6 +157,7 @@ export default function ChessBoard(props: {
   const commit = (move: ChessMove) => {
     setPick(null);
     setPending(null);
+    setHint(null);
     if (props.coach) {
       const verdict = reviewMove(state, move);
       setJudged(verdict ? { note: verdict, ply: ply + 1, square: move.to } : null);
@@ -145,6 +166,10 @@ export default function ChessBoard(props: {
     }
     onCommit(applyChessMove(state, move));
   };
+
+  const askDraw = () => onCommit(offerDraw(state, myColor));
+  const giveUp = () => { setGivingUp(false); onCommit(resign(state, myColor)); };
+  const showHint = () => { const move = hintMove(state); if (move) setHint({ move, ply }); };
 
   const play = (move: ChessMove) => {
     if (move.promotion) { setPending({ move, ply }); return; }
@@ -179,7 +204,7 @@ export default function ChessBoard(props: {
   const marked = note && judged ? judged.square : null;
   // Pilen og «var bedre» dukker bare opp når trekket faktisk kostet noe.
   const missed = note ? note.verdict === "unøyaktig" || note.verdict === "bom" || note.verdict === "tabbe" : false;
-  const hint = missed && note ? note.best : null;
+  const pointer = shown ?? (missed && note ? note.best : null);
   const place = (square: number) => {
     const position = myColor === "hvit" ? square : 63 - square;
     return { x: (position % 8) + 0.5, y: Math.floor(position / 8) + 0.5 };
@@ -231,7 +256,7 @@ export default function ChessBoard(props: {
             </button>
           );
         })}
-          {hint && <Arrow from={place(hint.from)} to={place(hint.to)} />}
+          {pointer && <Arrow from={place(pointer.from)} to={place(pointer.to)} />}
         </div>
       </div>
 
@@ -255,6 +280,26 @@ export default function ChessBoard(props: {
             {[...(info?.notes ?? []), ...(missed && mine ? [`${mine.bestText} var bedre`] : [])].join(" · ")}
           </small>
         </p>
+      )}
+
+      {state.drawOffer && state.drawOffer !== myColor && !over && (
+        <p className="chess-offer">
+          <span>{opponent?.name ?? "Motstanderen"} tilbyr remis</span>
+          <button className="chess-yes" onClick={() => onCommit(answerDraw(state, true))}>Godta</button>
+          <button onClick={() => onCommit(answerDraw(state, false))}>Nei</button>
+        </p>
+      )}
+
+      {!over && (
+        <div className="chess-actions">
+          {props.coach && <button onClick={showHint} disabled={!yourTurn}>Hint</button>}
+          <button onClick={askDraw} disabled={state.drawOffer === myColor}>
+            {state.drawOffer === myColor ? "Remis tilbudt" : "Tilby remis"}
+          </button>
+          {givingUp
+            ? <button className="chess-danger" onClick={giveUp}>Sikker?</button>
+            : <button onClick={() => setGivingUp(true)}>Gi deg</button>}
+        </div>
       )}
 
       <Moves history={state.history} />
@@ -311,20 +356,26 @@ function Gauge({ advantage, bottom }: { advantage: Advantage; bottom: PieceColor
   );
 }
 
-/** Treffsikkerheten for hver del av partiet, for begge sider. */
+/** Treffsikkerheten for hver del av partiet, for begge sider. Trykk på en rad for å se trekkene. */
 function Report({ report, myColor, players }: {
   report: ReturnType<typeof reportFrom>;
   myColor: PieceColor;
   players: ChessState["players"];
 }) {
+  const [open, setOpen] = useState<keyof PlayerReport | null>(null);
   const mine = myColor === "hvit" ? report.hvit : report.svart;
   const theirs = myColor === "hvit" ? report.svart : report.hvit;
   const rows: [string, keyof PlayerReport][] = [["Åpning", "åpning"], ["Midtspill", "midtspill"], ["Sluttspill", "sluttspill"]];
   const name = (color: PieceColor) => players.find((player) => player.color === color)?.name ?? COLOR_NAME[color];
+  const phaseOf_ = (report_: PlayerReport, key: keyof PlayerReport) => report_[key] as PhaseScore;
   const cell = (report_: PlayerReport, key: keyof PlayerReport) => {
-    const phase = report_[key] as { score: number; moves: number };
+    const phase = phaseOf_(report_, key);
     return phase.moves ? <b>{phase.score}</b> : <i>–</i>;
   };
+  const cost = (loss: number) => (loss < 10
+    ? "ingenting bedre fantes"
+    : `kostet ${(loss / 100).toFixed(1).replace(".", ",")}`);
+
   return (
     <div className="chess-report">
       <div className="chess-report-row chess-report-head">
@@ -332,13 +383,34 @@ function Report({ report, myColor, players }: {
         <span>{name(myColor)}</span>
         <span>{name(myColor === "hvit" ? "svart" : "hvit")}</span>
       </div>
-      {rows.map(([label, key]) => (
-        <div className="chess-report-row" key={key}>
-          <span>{label}</span>
-          {cell(mine, key)}
-          {cell(theirs, key)}
-        </div>
-      ))}
+      {rows.map(([label, key]) => {
+        const phase = phaseOf_(mine, key);
+        return (
+          <div key={key}>
+            <button
+              className={`chess-report-row chess-report-open ${open === key ? "åpen" : ""}`}
+              onClick={() => setOpen(open === key ? null : key)}
+              disabled={!phase.moves}
+              aria-expanded={open === key}
+            >
+              <span>{label}{phase.moves ? <i className="chess-report-more">{open === key ? "▾" : "▸"}</i> : null}</span>
+              {cell(mine, key)}
+              {cell(theirs, key)}
+            </button>
+            {open === key && phase.best && (
+              <div className="chess-report-detail">
+                <p><i className="bra">✓</i>
+                  {phase.moves > 1 ? "Best: " : ""}<b>{phase.best.text}</b> – {cost(phase.best.loss)}
+                </p>
+                {phase.worst && (
+                  <p><i className="svak">!</i> Verst: <b>{phase.worst.text}</b> – ga bort {(phase.worst.loss / 100).toFixed(1).replace(".", ",")}</p>
+                )}
+                <p className="chess-report-count">{phase.moves} {phase.moves === 1 ? "trekk" : "trekk"} i denne delen</p>
+              </div>
+            )}
+          </div>
+        );
+      })}
       <div className="chess-report-row chess-report-total">
         <span>Treffsikkerhet</span>
         <b>{mine.total.score}</b>

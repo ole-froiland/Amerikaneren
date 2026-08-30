@@ -385,3 +385,95 @@
 .chess-report-total span:first-child { font-weight: 700; color: #1d382c; }
 .chess-report-total b { color: #1d382c; font-size: 17px; }
 .chess-report .tiny { margin: 8px 0 0; color: #7a8880; }
+
+/* Hint, remis og oppgivelse. */
+.chess-actions {
+  width: calc(var(--board) + var(--gauge) + 8px);
+  display: flex;
+  gap: 6px;
+}
+
+.chess-actions button {
+  flex: 1;
+  padding: 8px 6px;
+  color: #cfe0d6;
+  background: #ffffff10;
+  border: 1px solid #ffffff1f;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chess-actions button:disabled { opacity: .4; cursor: default; }
+.chess-actions button:hover:not(:disabled) { background: #ffffff1c; }
+.chess-actions .chess-danger { color: #14271f; background: #d2857c; border-color: #e0a49c; }
+
+.chess-offer {
+  width: calc(var(--board) + var(--gauge) + 8px);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  background: var(--gold);
+  border-radius: 10px;
+  color: #14271f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chess-offer span { flex: 1; }
+.chess-offer button {
+  padding: 5px 11px;
+  color: #14271f;
+  background: #ffffff8c;
+  border: 0;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chess-offer .chess-yes { background: #16241f; color: var(--gold); }
+
+/* Fasene i gjennomgangen kan åpnes. */
+.chess-report-open {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.chess-report-open:disabled { cursor: default; }
+.chess-report-open.åpen { background: #e4eae4; }
+.chess-report-more { margin-left: 5px; font-style: normal; color: #7a8880; font-size: 10px; }
+
+.chess-report-detail {
+  padding: 8px 4px 10px;
+  display: grid;
+  gap: 5px;
+  border-top: 1px dashed #cfd8d2;
+}
+
+.chess-report-detail p { margin: 0; color: #46584f; font-size: 12px; line-height: 1.45; }
+.chess-report-detail b { color: #1d382c; }
+.chess-report-detail i {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 9px;
+  font-style: normal;
+  vertical-align: -3px;
+}
+
+.chess-report-detail .bra { background: #4a9b4f; }
+.chess-report-detail .svak { background: #e07c3e; }
+
+.chess-report-count { color: #8a978f !important; font-size: 11px !important; }

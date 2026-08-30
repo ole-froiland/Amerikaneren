@@ -28,11 +28,19 @@ sammenlignes med fasiten (20, 400 og 8902 fra utgangsstillingen, 2039 fra Kiwipe
 til som er laget for å avsløre feil i binding, rokade og promotering).
 
 Boten er negamax med alfa-beta, slagsortering og en kort slagveksling på slutten, så den ikke slutter
-å regne midt i et bytte. De fem nivåene styrer hvor dypt den ser og hvor ofte den roter: nybegynner og
-lett ser ett trekk fram og slenger ut et tilfeldig trekk i henholdsvis 55 og 30 prosent av tilfellene,
-middels ser to, vanskelig tre, og umulig fire uten å rote. Vurderingen er materiell pluss
-standardtabeller for hvor brikkene står godt. Selv det høyeste nivået svarer på under et halvt sekund,
-og det er testet.
+å regne midt i et bytte. Den graver ett trinn dypere om gangen og tar med seg rekkefølgen fra forrige
+runde, så det beste trekket prøves først. Går tiden ut midt i en runde, beholder den svaret fra runden
+før — aldri et halvferdig.
+
+De fem nivåene setter dybde og tidsbudsjett: nybegynner ett trekk, lett to, middels tre (0,4 s),
+vanskelig fire (0,9 s) og umulig opptil seks (1,5 s). De to letteste slenger i tillegg ut et tilfeldig
+trekk i 55 og 30 prosent av tilfellene, så de går an å slå. Vurderingen er materiell pluss
+standardtabeller for hvor brikkene står godt. En test spiller ut en tårnstige og krever at det
+høyeste nivået setter matt i to.
+
+Under partiet kan du be om hint — samme søk som coachen, uavhengig av hvor sterk boten er — tilby
+remis, eller gi deg. Boten sier ja til remis når den ikke står bedre enn 0,2 bonde. Et tilbud faller
+bort i det motparten flytter.
 
 Mot en venn deler dere samme rom som i Amerikaneren: verten spiller hvit, den som blir med spiller
 svart, og brettet snus så dine egne brikker står nærmest. Brettet lastes først når noen faktisk skal
@@ -65,7 +73,8 @@ omtaler linjen deres trekk, mens ditt eget merke blir stående på ruta på bret
 ### Gjennomgang etter partiet
 
 Er coachen på, regnes hele partiet gjennom når det er slutt: treffsikkerhet fra 0 til 100 for begge
-sider, delt på åpning, midtspill og sluttspill, og antall tabber.
+sider, delt på åpning, midtspill og sluttspill, og antall tabber. Trykk på en av delene for å se hvilket
+trekk som holdt best og hvilket som kostet mest der.
 
 Hvert trekk sammenlignes med det beste trekket i stillingen, og tapet gjøres om til en score med
 `100 · e^(−tap/180)`: null tap er 100, en halv bonde er 76, en hel er 57, tre er 19. Skalaen er vår
@@ -156,11 +165,12 @@ seg regnes ut mot det ferdige bordet og vises dempet med «Kastet», så du ser 
 Det krever at bordet rakk å bli ferdig; sluttet hånden på floppen, finnes det ingen fasit.
 
 Vant noen fordi alle andre kastet seg, viser de ikke kortene — da står det ingen påstand om hvem som
-«ville vunnet», for det vet vi ikke. Kastede kort kan skrus av i oppsettet om du vil spille uten fasit.
+«ville vunnet», for det vet vi ikke. Skrur du av coachen, spiller du uten fasit.
 
 ## Coach
 
-Skrus på i oppsettet. Etter hver hånd går den gjennom dine egne trekk og sier om prisen var riktig.
+Skrus på i oppsettet — samme bryter viser også kortene til dem som kastet seg. Etter hver hånd går den
+gjennom dine egne trekk og sier om prisen var riktig.
 
 Regnestykket er pott-odds mot vinnersjanse: syner du 20 i en pott på 60, betaler du 20 for å vinne 80,
 og trenger 25 % for å gå i null. Er vinnersjansen din høyere, var synet riktig.

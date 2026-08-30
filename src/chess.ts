@@ -48,7 +48,7 @@ export interface MoveRecord {
   by: PieceColor;
 }
 
-export type ChessOutcome = "spiller" | "matt" | "patt" | "gjentakelse" | "femti" | "materiell";
+export type ChessOutcome = "spiller" | "matt" | "patt" | "gjentakelse" | "femti" | "materiell" | "oppgitt" | "avtalt";
 
 export interface ChessState {
   board: (ChessPiece | null)[];
@@ -70,6 +70,8 @@ export interface ChessState {
   message: string;
   /** Stillingen partiet startet fra, så historikken kan spilles om. */
   start: string;
+  /** Fargen som har tilbudt remis, til motparten svarer eller flytter. */
+  drawOffer: PieceColor | null;
 }
 
 export const PIECE_NAME: Record<PieceType, string> = {
@@ -503,6 +505,7 @@ export function createChessGame(players: ChessPlayer[], difficulty: Difficulty =
     outcome: "spiller",
     winner: null,
     check: inCheck(position, position.turn),
+    drawOffer: null,
     difficulty,
     message: `${COLOR_NAME[position.turn]} begynner`,
   };
@@ -547,6 +550,8 @@ export function applyChessMove(state: ChessState, move: ChessMove): ChessState {
   return {
     ...state,
     ...next,
+    // Et remistilbud faller bort i det motparten flytter.
+    drawOffer: null,
     history: [...state.history, { move: legal, text, by: state.turn }],
     seen,
     outcome,
@@ -554,6 +559,29 @@ export function applyChessMove(state: ChessState, move: ChessMove): ChessState {
     check,
     message,
   };
+}
+
+/** Gir seg. Motstanderen vinner, og partiet er over med en gang. */
+export function resign(state: ChessState, color: PieceColor): ChessState {
+  if (state.outcome !== "spiller") return state;
+  const winner = other(color);
+  const name = state.players.find((player) => player.color === winner)?.name ?? COLOR_NAME[winner];
+  return { ...state, outcome: "oppgitt", winner, drawOffer: null, message: `Ga seg – ${name} vant` };
+}
+
+export function offerDraw(state: ChessState, color: PieceColor): ChessState {
+  if (state.outcome !== "spiller") return state;
+  return { ...state, drawOffer: color, message: `${COLOR_NAME[color]} tilbyr remis` };
+}
+
+/** Svarer på tilbudet. Sies nei, går partiet videre som før. */
+export function answerDraw(state: ChessState, accept: boolean): ChessState {
+  if (state.outcome !== "spiller" || !state.drawOffer) return state;
+  if (!accept) {
+    const name = state.players.find((player) => player.color === state.turn)?.name ?? COLOR_NAME[state.turn];
+    return { ...state, drawOffer: null, message: `Remis avslått – ${name} sin tur` };
+  }
+  return { ...state, outcome: "avtalt", winner: null, drawOffer: null, message: "Remis – dere ble enige" };
 }
 
 /* --- Boten --- */
@@ -629,6 +657,29 @@ const SQUARE_BONUS: Record<PieceType, number[]> = {
 
 const MATE = 100000;
 
+/* Søket får et tidsbudsjett. Klokken kan byttes ut, slik at tester kjører likt
+   uansett hvor rask maskinen er. */
+let stopAt = Infinity;
+let clock: () => number = Date.now;
+let visited = 0;
+let stopped = false;
+
+function beginSearch(budget = Infinity, now: () => number = Date.now) {
+  clock = now;
+  stopAt = budget === Infinity ? Infinity : now() + budget;
+  visited = 0;
+  stopped = false;
+}
+
+/** Sjekker klokken sjelden nok til at den ikke koster noe. */
+function outOfTime(): boolean {
+  if (stopped) return true;
+  visited += 1;
+  if ((visited & 511) !== 0 || stopAt === Infinity) return false;
+  if (clock() >= stopAt) stopped = true;
+  return stopped;
+}
+
 /** Stillingen sett fra den som har trekket. Positivt tall betyr at den står bedre. */
 export function evaluate(position: Position): number {
   let score = 0;
@@ -671,6 +722,7 @@ function quiet(position: Position, alpha: number, beta: number, depth: number): 
 }
 
 function search(position: Position, depth: number, alpha: number, beta: number, ply: number): number {
+  if (outOfTime()) return 0;
   if (depth === 0) return quiet(position, alpha, beta, 4);
   let best = -MATE * 2;
   let moved = false;
@@ -690,28 +742,50 @@ function search(position: Position, depth: number, alpha: number, beta: number, 
   return best;
 }
 
-const DEPTH: Record<Difficulty, number> = { nybegynner: 1, lett: 1, middels: 2, vanskelig: 3, umulig: 4 };
+const DEPTH: Record<Difficulty, number> = { nybegynner: 1, lett: 2, middels: 3, vanskelig: 4, umulig: 6 };
+/** Hvor lenge boten får tenke. Rekker den ikke dybden, beholder den forrige. */
+const BUDGET: Record<Difficulty, number> = {
+  nybegynner: Infinity, lett: Infinity, middels: 400, vanskelig: 900, umulig: 1500,
+};
 /** Hvor ofte boten bare slenger ut et tilfeldig trekk. */
-const SLIP: Record<Difficulty, number> = { nybegynner: 0.55, lett: 0.3, middels: 0.07, vanskelig: 0, umulig: 0 };
+const SLIP: Record<Difficulty, number> = { nybegynner: 0.55, lett: 0.3, middels: 0.06, vanskelig: 0, umulig: 0 };
 
-/** Trekket boten vil gjøre, eller null om partiet er slutt. */
-export function botChessMove(state: ChessState, random = Math.random): ChessMove | null {
+/**
+ * Trekket boten vil gjøre, eller null om partiet er slutt.
+ *
+ * Den graver ett trinn dypere om gangen og tar med seg rekkefølgen fra forrige
+ * runde, så det beste trekket prøves først. Går tiden ut midt i en runde,
+ * beholder den svaret fra runden før – aldri et halvferdig.
+ */
+export function botChessMove(state: ChessState, random = Math.random, now: () => number = Date.now): ChessMove | null {
   const position = clonePosition(positionOf(state));
   const moves = legalMoves(position);
   if (!moves.length) return null;
   if (random() < SLIP[state.difficulty]) return moves[Math.floor(random() * moves.length)];
 
-  let best = moves[0];
-  let bestScore = -MATE * 2;
-  for (const move of order(position, moves)) {
-    const undo = make(position, move);
-    const score = -search(position, DEPTH[state.difficulty] - 1, -MATE * 2, MATE * 2, 1);
-    unmake(position, undo);
-    // Litt slingring mellom like gode trekk, så boten ikke spiller identiske partier.
-    if (score > bestScore || (score === bestScore && random() < 0.3)) {
-      best = move;
-      bestScore = score;
+  beginSearch(BUDGET[state.difficulty], now);
+  let ordered = order(position, moves);
+  let best = ordered[0];
+
+  for (let depth = 1; depth <= DEPTH[state.difficulty]; depth += 1) {
+    const scored: { move: ChessMove; score: number }[] = [];
+    let roundBest = ordered[0];
+    let roundScore = -Infinity;
+    for (const option of ordered) {
+      const undo = make(position, option);
+      const score = -search(position, depth - 1, -MATE * 2, MATE * 2, 1);
+      unmake(position, undo);
+      if (stopped) break;
+      scored.push({ move: option, score });
+      // Litt slingring mellom like gode trekk, så boten ikke spiller identiske partier.
+      if (score > roundScore || (score === roundScore && random() < 0.3)) {
+        roundScore = score;
+        roundBest = option;
+      }
     }
+    if (stopped) break;
+    best = roundBest;
+    ordered = scored.sort((a, b) => b.score - a.score).map((entry) => entry.move);
   }
   return best;
 }
@@ -756,6 +830,7 @@ function sacrifices(position: Position, move: ChessMove): boolean {
  * Prisen er forskjellen mellom det beste trekket og det som ble spilt.
  */
 export function reviewMove(state: ChessState, move: ChessMove, depth = REVIEW_DEPTH): CoachNote | null {
+  beginSearch();
   const position = clonePosition(positionOf(state));
   const moves = legalMoves(position);
   if (moves.length < 2) return null;
@@ -798,6 +873,7 @@ export interface Advantage {
 export const GAUGE_DEPTH = 2;
 
 export function advantage(state: ChessState, depth = GAUGE_DEPTH): Advantage {
+  beginSearch();
   if (state.outcome === "matt") return { score: state.winner === "hvit" ? MATE : -MATE, mate: 0 };
   if (state.outcome !== "spiller") return { score: 0, mate: null };
 
@@ -959,12 +1035,33 @@ export function describeLast(state: ChessState): MoveInfo | null {
   return { opening: OPENINGS[line] ?? null, notes };
 }
 
+/** Trekket coachen ville spilt akkurat nå. Brukes til hint under partiet. */
+export function hintMove(state: ChessState, depth = REVIEW_DEPTH): ChessMove | null {
+  if (state.outcome !== "spiller") return null;
+  beginSearch();
+  const position = clonePosition(positionOf(state));
+  const moves = legalMoves(position);
+  if (!moves.length) return null;
+  let best = moves[0];
+  let bestScore = -Infinity;
+  for (const option of order(position, moves)) {
+    const undo = make(position, option);
+    const score = -search(position, depth - 1, -MATE * 2, MATE * 2, 1);
+    unmake(position, undo);
+    if (score > bestScore) { bestScore = score; best = option; }
+  }
+  return best;
+}
+
 /* --- Gjennomgang av hele partiet --- */
 
 export type Phase = "åpning" | "midtspill" | "sluttspill";
 
 export interface PlyLoss {
   by: PieceColor;
+  /** Trekkets plass i historikken, og hvordan det skrives. */
+  index: number;
+  text: string;
   /** Hva trekket kostet mot det beste trekket, i hundredels bonde. */
   loss: number;
   phase: Phase;
@@ -974,6 +1071,9 @@ export interface PhaseScore {
   /** Treffsikkerhet fra 0 til 100. */
   score: number;
   moves: number;
+  /** Trekket som holdt best, og det som kostet mest. */
+  best: PlyLoss | null;
+  worst: PlyLoss | null;
 }
 
 export interface PlayerReport {
@@ -1013,11 +1113,13 @@ function phaseOf(position: Position, index: number): Phase {
 export function analyseAt(state: ChessState, index: number, depth = ANALYSIS_DEPTH): PlyLoss | null {
   const record = state.history[index];
   if (!record) return null;
+  beginSearch();
   const position = parseFen(state.start || START_FEN);
   for (let i = 0; i < index; i += 1) make(position, state.history[i].move);
 
   const phase = phaseOf(position, index);
-  if (legalMoves(position).length < 2) return { by: record.by, loss: 0, phase };
+  const stamp = { by: record.by, index, text: record.text, phase };
+  if (legalMoves(position).length < 2) return { ...stamp, loss: 0 };
 
   // Her trengs bare tapet, ikke hvilket trekk som var best. Da holder det med to
   // søk – ett med full beskjæring for det beste, og ett for trekket som ble spilt.
@@ -1025,7 +1127,7 @@ export function analyseAt(state: ChessState, index: number, depth = ANALYSIS_DEP
   const undo = make(position, record.move);
   const played = -search(position, depth - 1, -MATE * 2, MATE * 2, 1);
   unmake(position, undo);
-  return { by: record.by, loss: Math.max(0, Math.min(1200, best - played)), phase };
+  return { ...stamp, loss: Math.max(0, Math.min(1200, best - played)) };
 }
 
 /**
@@ -1036,7 +1138,15 @@ export const accuracyOf = (losses: PlyLoss[]) => (losses.length
   ? Math.round(losses.reduce((sum, ply) => sum + 100 * Math.exp(-ply.loss / 180), 0) / losses.length)
   : 0);
 
-const scoreFor = (losses: PlyLoss[]): PhaseScore => ({ score: accuracyOf(losses), moves: losses.length });
+const scoreFor = (losses: PlyLoss[]): PhaseScore => {
+  const sorted = [...losses].sort((a, b) => a.loss - b.loss);
+  return {
+    score: accuracyOf(losses),
+    moves: losses.length,
+    best: sorted[0] ?? null,
+    worst: sorted.length > 1 ? sorted[sorted.length - 1] : null,
+  };
+};
 
 const reportFor = (losses: PlyLoss[], color: PieceColor): PlayerReport => {
   const mine = losses.filter((ply) => ply.by === color);

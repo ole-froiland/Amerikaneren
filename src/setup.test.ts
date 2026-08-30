@@ -46,15 +46,10 @@ test("an empty store gives the defaults", () => {
 });
 
 test("keeps the old poker keys so earlier choices survive", () => {
-  const saved = store({
-    [SETUP_KEYS.level]: "vanskelig",
-    [SETUP_KEYS.coach]: "på",
-    [SETUP_KEYS.folded]: "av",
-  });
+  const saved = store({ [SETUP_KEYS.level]: "vanskelig", [SETUP_KEYS.coach]: "på" });
   const choice = readChoice(saved.read);
   assert.equal(choice.level, "vanskelig");
   assert.equal(choice.coach, true);
-  assert.equal(choice.showFolded, false);
 });
 
 test("counts outside the table size are pulled back in", () => {
@@ -86,7 +81,7 @@ test("the old name for poker still points at the poker table", () => {
 
 test("what is written comes back unchanged", () => {
   const saved = store();
-  const choice = choiceWith({ mode: "venner", humans: 3, opponents: 5, level: "lett", coach: true, showFolded: false });
+  const choice = choiceWith({ mode: "venner", humans: 3, opponents: 5, level: "lett", coach: true });
   writeChoice(choice, saved.write);
   assert.deepEqual(readChoice(saved.read), choice);
 });
