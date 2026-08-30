@@ -18,6 +18,7 @@ import {
   botChessMove,
   createChessGame,
   createChessPlayers,
+  describeLast,
   gaugeLabel,
   gaugeShare,
   movesFrom,
@@ -53,8 +54,11 @@ export default function ChessBoard(props: {
   const ply = state?.history.length ?? -1;
   const from = pick?.ply === ply ? pick.square : null;
   const promotion = pending?.ply === ply ? pending.move : null;
-  // Dommen blir stående mens motstanderen svarer, og forsvinner når du selv flytter igjen.
+  // Merket på brettet blir stående mens motstanderen svarer, og forsvinner når du
+  // flytter igjen. Linjen under brettet omtaler alltid siste trekk, så dommen står
+  // der bare når det er ditt eget trekk som ligger sist.
   const note = judged && (ply === judged.ply || ply === judged.ply + 1) ? judged.note : null;
+  const mine = judged?.ply === ply ? judged.note : null;
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
@@ -74,6 +78,8 @@ export default function ChessBoard(props: {
   const yourTurn = Boolean(state) && state!.outcome === "spiller" && state!.turn === myColor;
   // Hvem som står best, regnet på nytt hver gang stillingen endrer seg.
   const gauge = useMemo(() => (state ? advantage(state) : null), [state]);
+  // Hva siste trekk gjorde – gjelder begge sider, også når coachen er av.
+  const info = useMemo(() => (state ? describeLast(state) : null), [state]);
   const options = useMemo(
     () => (state && from !== null && yourTurn ? movesFrom(positionOf(state), from) : []),
     [state, from, yourTurn],
@@ -212,11 +218,14 @@ export default function ChessBoard(props: {
         </p>
       </div>
 
-      {note && (
-        <p className={`chess-coach ${note.verdict}`}>
-          <b>{VERDICT_MARK[note.verdict]}</b>
-          <span>{VERDICT_NAME[note.verdict]}</span>
-          {missed && <small>{note.bestText} var bedre</small>}
+      {(mine || info) && (
+        <p className={`chess-note ${mine ? mine.verdict : ""}`}>
+          {mine && <b className="chess-note-mark">{VERDICT_MARK[mine.verdict]}</b>}
+          <span className="chess-note-move">{state.history.at(-1)?.text}</span>
+          {info?.opening && <em className="chess-note-book">{info.opening}</em>}
+          <small>
+            {[...(info?.notes ?? []), ...(missed && mine ? [`${mine.bestText} var bedre`] : [])].join(" · ")}
+          </small>
         </p>
       )}
 

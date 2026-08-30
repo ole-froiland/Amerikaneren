@@ -98,7 +98,6 @@ export default function StartWizard(props: {
       <section className="panel setup-panel wizard-panel">
         {head}
         <h1>Hvordan vil du spille?</h1>
-        <p className="muted">Ett valg om gangen, så er du ved bordet.</p>
         <div className="choice-grid">
           <button
             className={choice.mode === "alene" ? "chosen" : ""}
@@ -106,7 +105,7 @@ export default function StartWizard(props: {
             onClick={() => { update({ mode: "alene" }); forward(); }}
           >
             <b>Spill alene</b>
-            <small>Du mot smarte bots. Kortene deles ut med en gang.</small>
+            <small>Mot bots, med en gang</small>
           </button>
           <button
             className={choice.mode === "venner" ? "chosen" : ""}
@@ -114,7 +113,7 @@ export default function StartWizard(props: {
             onClick={() => { update({ mode: "venner" }); forward(); }}
           >
             <b>Spill med venner</b>
-            <small>Del en lenke. Alle spiller fra sin egen mobil, og ledige plasser tar bots.</small>
+            <small>Del en lenke, spill fra hver deres mobil</small>
           </button>
         </div>
         {props.onRules && <button className="wizard-rules" onClick={props.onRules}>Hvordan spiller man?</button>}
@@ -127,8 +126,7 @@ export default function StartWizard(props: {
     return (
       <section className="panel setup-panel wizard-panel">
         {head}
-        <h1>Hvilket bord?</h1>
-        <p className="muted">To spill i samme app. Du kan bytte når som helst.</p>
+        <h1>Hvilket spill?</h1>
         <div className="choice-grid">
           <button
             className={choice.game === "amerikaneren" ? "chosen" : ""}
@@ -136,7 +134,7 @@ export default function StartWizard(props: {
             onClick={() => { update({ game: "amerikaneren" }); forward(); }}
           >
             <b>Amerikaneren</b>
-            <small>Stikkspillet for fire. By, finn makkeren din og spill dere til 52 poeng.</small>
+            <small>Stikkspill for fire. Først til 52 poeng.</small>
           </button>
           <button
             className={choice.game === "sjakk" ? "chosen" : ""}
@@ -144,7 +142,7 @@ export default function StartWizard(props: {
             onClick={() => { update({ game: "sjakk" }); forward(); }}
           >
             <b>Sjakk</b>
-            <small>Vanlige regler, hele veien til matt. Mot bot på tre nivåer, eller mot en venn.</small>
+            <small>Vanlige regler, mot bot eller en venn.</small>
           </button>
           <button
             className={choice.game === "poker" ? "chosen" : ""}
@@ -153,11 +151,7 @@ export default function StartWizard(props: {
             onClick={() => { update({ game: "poker" }); forward(); }}
           >
             <b>Poker</b>
-            <small>
-              {openTable
-                ? "Texas hold'em med falske sjetonger. Bots på tre nivåer, og en coach som ser deg i kortene."
-                : "Har ingen onlinerom ennå. Gå ett steg tilbake og velg «alene» for å sette deg her."}
-            </small>
+            <small>{openTable ? "Texas hold'em med falske sjetonger." : "Bare alene foreløpig."}</small>
           </button>
         </div>
       </section>
@@ -173,11 +167,7 @@ export default function StartWizard(props: {
         {head}
         {first}
         <h1>{table ? "Hvor mange spiller du mot?" : "Hvor mange er dere?"}</h1>
-        <p className="muted">
-          {table
-            ? "Hver motstander er en bot. Færre spillere gir raskere hender."
-            : "Amerikaneren spilles alltid fire rundt bordet. Plassene dere ikke fyller, tar bots."}
-        </p>
+        <p className="muted">{table ? "Hver motstander er en bot." : "Ledige plasser tar bots."}</p>
         <div className="count-grid" style={{ "--options": options.length } as CSSProperties}>
           {options.map((count) => (
             <button
@@ -202,7 +192,7 @@ export default function StartWizard(props: {
       <section className="panel setup-panel wizard-panel">
         {head}
         <h1>{choice.game === "sjakk" ? "Hvor sterk skal boten være?" : "Hvor tøffe skal de være?"}</h1>
-        <p className="muted">{choice.game === "sjakk" ? "Du spiller hvit og begynner." : "Nivået gjelder alle botene rundt bordet."}</p>
+        <p className="muted">{choice.game === "sjakk" ? "Du spiller hvit og begynner." : "Gjelder alle botene."}</p>
         <div className="level-grid">
           {(["lett", "middels", "vanskelig"] as Difficulty[]).map((option) => (
             <button
@@ -225,20 +215,19 @@ export default function StartWizard(props: {
       <section className="panel setup-panel wizard-panel">
         {head}
         <h1>Vil du ha hjelp?</h1>
-        <p className="muted">Kan skrus av og på igjen neste gang du setter deg.</p>
         <label className="switch-row">
           <b>Coach</b>
           <small>
             {board
-              ? "Hvert trekk du gjør får et merke – fra briljant til tabbe – og var det et bedre trekk, viser en pil hvilket."
-              : "Etter hver hånd går den gjennom valgene dine og regner ut om prisen var riktig. Den dømmer situasjonen, ikke utfallet."}
+              ? "Merker hvert trekk du gjør, fra briljant til tabbe, og peker på det bedre trekket."
+              : "Går gjennom valgene dine etter hver hånd og sier om prisen var riktig."}
           </small>
           <input type="checkbox" checked={choice.coach} onChange={(event) => update({ coach: event.target.checked })} />
         </label>
         {!board && (
           <label className="switch-row">
             <b>Vis kastede kort</b>
-            <small>Etter showdown ser du hendene til dem som kastet seg – og om du selv kastet vinnerhånden.</small>
+            <small>Etter showdown ser du hendene til dem som kastet seg.</small>
             <input type="checkbox" checked={choice.showFolded} onChange={(event) => update({ showFolded: event.target.checked })} />
           </label>
         )}
@@ -287,10 +276,10 @@ export default function StartWizard(props: {
       <h1>{alone ? "Klar?" : invited ? "Du er invitert" : "Samle bordet"}</h1>
       <p className="muted">
         {alone
-          ? choice.game === "sjakk" ? "Alt er valgt. Brikkene står oppstilt." : "Alt er valgt. Kortene ligger og venter."
+          ? "Alt er valgt."
           : invited
             ? `Skriv navnet ditt, så er du inne i rom ${code}.`
-            : "Alle åpner appen på sin mobil. Én lager rommet, resten får lenken."}
+            : "Én lager rommet, resten får lenken."}
       </p>
       {/* Den som er invitert har ikke valgt noe selv – da er oppsummeringen bare støy. */}
       {!invited && (

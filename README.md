@@ -47,6 +47,20 @@ er synlige uten at store fyller hele baren.
 Tallet kommer fra et grunt søk på to trekk – nok til å se at en brikke henger, raskt nok til å regnes
 på nytt etter hvert eneste trekk. Baren står der uansett om coachen er på.
 
+### Hva trekket gjør
+
+Under brettet står en linje om siste trekk – uansett hvem som gjorde det, og uavhengig av coachen.
+Den sier hva trekket faktisk gjør: slår en brikke, gir sjakk, utvikler, tar sentrum, truer noe, setter
+en gaffel, eller lar brikken stå i slag. Alt leses rett ut av stillingen etter trekket, så det er
+etterprøvbart og ikke gjetning.
+
+Følger partiet fortsatt en kjent åpning, står navnet i en gyllen brikke ved siden av: Spansk,
+Siciliansk, Dronninggambit, Kongeindisk og resten av linjene i `OPENINGS` i `src/chess.ts`. Navnet
+forsvinner i det partiet går ut av teori.
+
+Er det ditt eget trekk som ligger sist, står coachens merke først i linjen. Har motstanderen svart,
+omtaler linjen deres trekk, mens ditt eget merke blir stående på ruta på brettet.
+
 ### Coach på brettet
 
 Skrus på i oppsettet, og gjelder bare dine egne trekk. Hvert trekk får et merke på ruta det gikk til:

@@ -7,6 +7,7 @@ import {
   botChessMove,
   createChessGame,
   createChessPlayers,
+  describeLast,
   gaugeLabel,
   gaugeShare,
   inCheck,
@@ -228,4 +229,43 @@ test("the gauge counts a mate instead of pawns", () => {
 
   const coming = advantage(game("6k1/5ppp/8/8/8/8/8/R3K2R w KQ - 0 1"), 3);
   assert.ok(coming.mate !== null && coming.mate > 0, `ventet matt for hvit, fikk ${JSON.stringify(coming)}`);
+});
+
+test("the move line names the opening while the game follows it", () => {
+  let state = game(START_FEN);
+  state = applyChessMove(state, move("e2", "e4"));
+  assert.equal(describeLast(state)?.opening, "Kongebondeåpning");
+  state = applyChessMove(state, move("c7", "c5"));
+  assert.equal(describeLast(state)?.opening, "Siciliansk");
+  state = applyChessMove(state, move("a2", "a3"));
+  assert.equal(describeLast(state)?.opening, null);
+});
+
+test("the move line says what the move actually does", () => {
+  let state = game(START_FEN);
+  state = applyChessMove(state, move("e2", "e4"));
+  assert.deepEqual(describeLast(state)?.notes, ["tar sentrum"]);
+
+  state = applyChessMove(state, move("e7", "e5"));
+  state = applyChessMove(state, move("g1", "f3"));
+  const developing = describeLast(state)!.notes;
+  assert.ok(developing.includes("utvikler springeren"));
+  assert.ok(developing.some((note) => note.startsWith("truer bonden på e5")), developing.join(" · "));
+});
+
+test("the move line warns when the piece is left hanging", () => {
+  const state = applyChessMove(game("4k3/8/8/3q4/8/8/8/3QK3 w - - 0 1"), move("d1", "d3"));
+  assert.ok(describeLast(state)?.notes.includes("dronningen står i slag"));
+});
+
+test("the move line calls a fork a fork", () => {
+  // Springeren på c7 treffer begge tårnene på én gang. Hvit konge står utenfor e-linjen.
+  const forked = applyChessMove(game("r3r2k/8/8/1N6/8/8/8/7K w - - 0 1"), move("b5", "c7"));
+  assert.ok(describeLast(forked)!.notes.includes("gaffel: truer to tårn"), describeLast(forked)!.notes.join(" · "));
+
+  // Konge og tårn: sjakken nevnes for seg, tårnet som trusselen det er.
+  const checked = applyChessMove(game("r3k3/8/8/1N6/8/8/8/4K3 w - - 0 1"), move("b5", "c7"));
+  const notes = checked.history.length ? describeLast(checked)!.notes : [];
+  assert.ok(notes.includes("sjakk"), notes.join(" · "));
+  assert.ok(notes.some((note) => note.startsWith("truer tårnet på a8")), notes.join(" · "));
 });

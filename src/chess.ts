@@ -68,6 +68,8 @@ export interface ChessState {
   check: boolean;
   difficulty: Difficulty;
   message: string;
+  /** Stillingen partiet startet fra, så historikken kan spilles om. */
+  start: string;
 }
 
 export const PIECE_NAME: Record<PieceType, string> = {
@@ -495,6 +497,7 @@ export function createChessGame(players: ChessPlayer[], difficulty: Difficulty =
   return {
     ...position,
     players,
+    start: fen,
     history: [],
     seen: { [positionKey(position)]: 1 },
     outcome: "spiller",
@@ -820,4 +823,137 @@ export function gaugeLabel(advantage: Advantage): string {
   const pawns = advantage.score / 100;
   if (Math.abs(pawns) < 0.05) return "0,0";
   return `${pawns > 0 ? "+" : "−"}${Math.abs(pawns).toFixed(1).replace(".", ",")}`;
+}
+
+/* --- Hva trekket gjør --- */
+
+export interface MoveInfo {
+  /** Navnet på åpningen så lenge trekkene følger den. */
+  opening: string | null;
+  /** Korte setninger om hva trekket gjør: slår, truer, utvikler, står i slag. */
+  notes: string[];
+}
+
+/**
+ * De vanligste åpningene, med trekkene som fører dit. Så lenge partiet følger
+ * en av linjene, står navnet under brettet – da spiller du teori.
+ */
+const OPENINGS: Record<string, string> = {
+  "e4": "Kongebondeåpning",
+  "e4 e5": "Åpent spill",
+  "e4 e5 Sf3": "Kongespringerspill",
+  "e4 e5 Sf3 Sc6": "Kongespringerspill",
+  "e4 e5 Sf3 Sc6 Lb5": "Spansk",
+  "e4 e5 Sf3 Sc6 Lc4": "Italiensk",
+  "e4 e5 Sf3 Sc6 d4": "Skotsk",
+  "e4 e5 Sf3 Sf6": "Russisk",
+  "e4 e5 Sc3": "Wienerpartiet",
+  "e4 e5 Lc4": "Løperspill",
+  "e4 e5 f4": "Kongegambit",
+  "e4 c5": "Siciliansk",
+  "e4 c5 Sf3": "Siciliansk",
+  "e4 c5 Sf3 d6": "Siciliansk",
+  "e4 c5 Sf3 Sc6": "Siciliansk",
+  "e4 c5 c3": "Siciliansk, Alapin",
+  "e4 e6": "Fransk",
+  "e4 e6 d4": "Fransk",
+  "e4 e6 d4 d5": "Fransk",
+  "e4 c6": "Caro-Kann",
+  "e4 c6 d4": "Caro-Kann",
+  "e4 c6 d4 d5": "Caro-Kann",
+  "e4 d5": "Skandinavisk",
+  "e4 d6": "Pirc",
+  "e4 g6": "Moderne forsvar",
+  "e4 Sf6": "Aljechin",
+  "d4": "Dronningbondeåpning",
+  "d4 d5": "Lukket spill",
+  "d4 d5 c4": "Dronninggambit",
+  "d4 d5 c4 e6": "Dronninggambit, avslått",
+  "d4 d5 c4 dxc4": "Dronninggambit, mottatt",
+  "d4 d5 c4 c6": "Slavisk",
+  "d4 d5 Sf3": "Dronningbondeåpning",
+  "d4 Sf6": "Indisk",
+  "d4 Sf6 c4": "Indisk",
+  "d4 Sf6 c4 e6": "Nimzo-indisk",
+  "d4 Sf6 c4 g6": "Kongeindisk",
+  "d4 Sf6 c4 c5": "Benoni",
+  "d4 f5": "Hollandsk",
+  "c4": "Engelsk",
+  "c4 e5": "Engelsk",
+  "c4 Sf6": "Engelsk",
+  "Sf3": "Réti",
+  "Sf3 d5 c4": "Réti",
+  "g3": "Kongefianchetto",
+  "b3": "Larsens åpning",
+};
+
+const PIECE_WORD: Record<PieceType, string> = {
+  bonde: "bonden", springer: "springeren", løper: "løperen",
+  tårn: "tårnet", dronning: "dronningen", konge: "kongen",
+};
+
+const PIECE_PLURAL: Record<PieceType, string> = {
+  bonde: "bønder", springer: "springere", løper: "løpere",
+  tårn: "tårn", dronning: "dronninger", konge: "konger",
+};
+
+const CENTRE = ["d4", "e4", "d5", "e5"];
+
+/** Stillingen slik den var før siste trekk, spilt om fra starten. */
+export function positionBefore(state: ChessState): Position | null {
+  if (!state.history.length) return null;
+  const position = parseFen(state.start || START_FEN);
+  for (const record of state.history.slice(0, -1)) make(position, record.move);
+  return position;
+}
+
+/** Hva siste trekk gjorde, og om partiet fortsatt følger en kjent åpning. */
+export function describeLast(state: ChessState): MoveInfo | null {
+  const record = state.history.at(-1);
+  const before = positionBefore(state);
+  if (!record || !before) return null;
+  const { move } = record;
+  const mover = record.by;
+  const piece = before.board[move.from];
+  if (!piece) return null;
+
+  const after = clonePosition(before);
+  make(after, move);
+  const notes: string[] = [];
+
+  if (move.castle) notes.push(move.castle === "kort" ? "kongen i sikkerhet" : "kongen i sikkerhet, tårnet ut");
+  if (move.capture) {
+    const taken = move.enPassant ? "bonden" : PIECE_WORD[before.board[move.to]?.type ?? "bonde"];
+    notes.push(`slår ${taken}`);
+  }
+  if (move.promotion) notes.push(`bonden blir ${PIECE_WORD[move.promotion]}`);
+  if (inCheck(after, other(mover))) notes.push("sjakk");
+  if (!move.castle && (piece.type === "springer" || piece.type === "løper") && rankOf(move.from) === (mover === "hvit" ? 7 : 0)) {
+    notes.push(`utvikler ${PIECE_WORD[piece.type]}`);
+  }
+  if (piece.type === "bonde" && CENTRE.includes(squareName(move.to))) notes.push("tar sentrum");
+
+  // Hva brikken truer fra den nye ruta: dyrere brikker, eller brikker som ikke er dekket.
+  const landed = after.board[move.to]!;
+  const threatened = pseudoMoves(after, mover)
+    .filter((option) => option.from === move.to && option.capture)
+    .map((option) => ({ square: option.to, piece: after.board[option.to] }))
+    .filter((entry): entry is { square: number; piece: ChessPiece } => Boolean(entry.piece) && entry.piece!.type !== "konge")
+    .filter((entry) => VALUE[entry.piece.type] > VALUE[landed.type] || !attacked(after.board, entry.square, other(mover)));
+  if (threatened.length >= 2) {
+    const [one, two] = threatened;
+    notes.push(one.piece.type === two.piece.type
+      ? `gaffel: truer to ${PIECE_PLURAL[one.piece.type]}`
+      : `gaffel: truer ${PIECE_WORD[one.piece.type]} og ${PIECE_WORD[two.piece.type]}`);
+  } else if (threatened.length === 1) {
+    notes.push(`truer ${PIECE_WORD[threatened[0].piece.type]} på ${squareName(threatened[0].square)}`);
+  }
+
+  // Står brikken selv i slag der den landet?
+  if (attacked(after.board, move.to, other(mover)) && !attacked(after.board, move.to, mover)) {
+    notes.push(`${PIECE_WORD[landed.type]} står i slag`);
+  }
+
+  const line = state.history.map((entry) => entry.text).join(" ");
+  return { opening: OPENINGS[line] ?? null, notes };
 }
