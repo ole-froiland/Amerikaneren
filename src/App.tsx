@@ -327,6 +327,7 @@ export default function App() {
             myId={room ? playerId : "du"}
             difficulty={choice.level}
             canSeed={!room || room.hostId === playerId}
+            coach={choice.coach}
             online={Boolean(room)}
             roomCode={room?.code}
             onCommit={commitChess}

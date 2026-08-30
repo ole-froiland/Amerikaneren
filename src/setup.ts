@@ -74,8 +74,12 @@ export const gameAvailable = (mode: SetupMode, game: SetupGame) =>
 export function stepsFor(choice: SetupChoice, locked = false): SetupStep[] {
   const steps: SetupStep[] = locked ? [] : ["modus", "spill"];
   if (choice.game === "poker") steps.push("antall", "niva", "coach");
-  // Sjakk er alltid to om brettet, så antallet er gitt. Mot en venn er det ingen bot å stille inn.
-  else if (choice.game === "sjakk") { if (choice.mode === "alene") steps.push("niva"); }
+  // Sjakk er alltid to om brettet, så antallet er gitt. Mot en venn er det ingen bot å stille inn,
+  // men coachen dømmer dine egne trekk uansett hvem som sitter på andre siden.
+  else if (choice.game === "sjakk") {
+    if (choice.mode === "alene") steps.push("niva");
+    steps.push("coach");
+  }
   else if (choice.mode === "venner") steps.push("antall");
   steps.push("klar");
   return steps;
@@ -93,6 +97,7 @@ export function summaryOf(choice: SetupChoice): string[] {
   if (choice.game === "sjakk") {
     lines.push(choice.mode === "alene" ? "mot bot" : "to spillere");
     if (choice.mode === "alene") lines.push(DIFFICULTY_NAME[choice.level].toLowerCase());
+    lines.push(choice.coach ? "coach på" : "coach av");
     return lines;
   }
   if (choice.mode === "alene") {

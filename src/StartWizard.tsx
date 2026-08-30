@@ -220,21 +220,28 @@ export default function StartWizard(props: {
   }
 
   if (step === "coach") {
+    const board = choice.game === "sjakk";
     return (
       <section className="panel setup-panel wizard-panel">
         {head}
         <h1>Vil du ha hjelp?</h1>
-        <p className="muted">Begge kan skrus av og på igjen neste gang du setter deg.</p>
+        <p className="muted">Kan skrus av og på igjen neste gang du setter deg.</p>
         <label className="switch-row">
           <b>Coach</b>
-          <small>Etter hver hånd går den gjennom valgene dine og regner ut om prisen var riktig. Den dømmer situasjonen, ikke utfallet.</small>
+          <small>
+            {board
+              ? "Hvert trekk du gjør får et merke – fra briljant til tabbe – og var det et bedre trekk, viser en pil hvilket."
+              : "Etter hver hånd går den gjennom valgene dine og regner ut om prisen var riktig. Den dømmer situasjonen, ikke utfallet."}
+          </small>
           <input type="checkbox" checked={choice.coach} onChange={(event) => update({ coach: event.target.checked })} />
         </label>
-        <label className="switch-row">
-          <b>Vis kastede kort</b>
-          <small>Etter showdown ser du hendene til dem som kastet seg – og om du selv kastet vinnerhånden.</small>
-          <input type="checkbox" checked={choice.showFolded} onChange={(event) => update({ showFolded: event.target.checked })} />
-        </label>
+        {!board && (
+          <label className="switch-row">
+            <b>Vis kastede kort</b>
+            <small>Etter showdown ser du hendene til dem som kastet seg – og om du selv kastet vinnerhånden.</small>
+            <input type="checkbox" checked={choice.showFolded} onChange={(event) => update({ showFolded: event.target.checked })} />
+          </label>
+        )}
         <button className="primary-cta" onClick={forward}>Videre</button>
       </section>
     );

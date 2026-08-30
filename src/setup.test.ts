@@ -102,8 +102,8 @@ test("the summary names what you picked", () => {
 });
 
 test("chess asks about the bot only when you play alone", () => {
-  assert.deepEqual(stepsFor(choiceWith({ game: "sjakk", mode: "alene" })), ["modus", "spill", "niva", "klar"]);
-  assert.deepEqual(stepsFor(choiceWith({ game: "sjakk", mode: "venner" })), ["modus", "spill", "klar"]);
+  assert.deepEqual(stepsFor(choiceWith({ game: "sjakk", mode: "alene" })), ["modus", "spill", "niva", "coach", "klar"]);
+  assert.deepEqual(stepsFor(choiceWith({ game: "sjakk", mode: "venner" })), ["modus", "spill", "coach", "klar"]);
 });
 
 test("chess can be played with friends, poker cannot", () => {
@@ -112,6 +112,6 @@ test("chess can be played with friends, poker cannot", () => {
 });
 
 test("the chess summary says who is across the board", () => {
-  assert.deepEqual(summaryOf(choiceWith({ game: "sjakk", mode: "alene", level: "lett" })), ["Sjakk", "mot bot", "lett"]);
-  assert.deepEqual(summaryOf(choiceWith({ game: "sjakk", mode: "venner" })), ["Sjakk", "to spillere"]);
+  assert.deepEqual(summaryOf(choiceWith({ game: "sjakk", mode: "alene", level: "lett" })), ["Sjakk", "mot bot", "lett", "coach av"]);
+  assert.deepEqual(summaryOf(choiceWith({ game: "sjakk", mode: "venner", coach: true })), ["Sjakk", "to spillere", "coach på"]);
 });

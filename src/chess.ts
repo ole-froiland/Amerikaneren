@@ -712,3 +712,72 @@ export function botChessMove(state: ChessState, random = Math.random): ChessMove
   }
   return best;
 }
+
+/* --- Coachen --- */
+
+export type MoveVerdict = "briljant" | "beste" | "bra" | "unøyaktig" | "bom" | "tabbe";
+
+export interface CoachNote {
+  verdict: MoveVerdict;
+  /** Hvor mye trekket kostet, målt i bondeverdier ganger hundre. */
+  loss: number;
+  /** Trekket coachen ville spilt, og hvordan det skrives. */
+  best: ChessMove;
+  bestText: string;
+}
+
+export const VERDICT_MARK: Record<MoveVerdict, string> = {
+  briljant: "!!", beste: "★", bra: "✓", unøyaktig: "?!", bom: "?", tabbe: "??",
+};
+
+export const VERDICT_NAME: Record<MoveVerdict, string> = {
+  briljant: "Briljant", beste: "Beste trekk", bra: "Bra", unøyaktig: "Unøyaktig", bom: "Bom", tabbe: "Tabbe",
+};
+
+/** Dypere enn boten spiller, så dommen ikke er dårligere enn motstanderen. */
+export const REVIEW_DEPTH = 3;
+
+/** Ofrer trekket materiell? Brikken går til en rute motstanderen dekker, uten å ta nok igjen. */
+function sacrifices(position: Position, move: ChessMove): boolean {
+  const piece = position.board[move.from];
+  const taken = position.board[move.to];
+  if (!piece) return false;
+  const after = clonePosition(position);
+  make(after, move);
+  if (!attacked(after.board, move.to, after.turn)) return false;
+  return VALUE[piece.type] - (taken ? VALUE[taken.type] : 0) >= 300;
+}
+
+/**
+ * Dømmer trekket ut fra hva som var mulig i stillingen – ikke hvordan partiet endte.
+ * Prisen er forskjellen mellom det beste trekket og det som ble spilt.
+ */
+export function reviewMove(state: ChessState, move: ChessMove, depth = REVIEW_DEPTH): CoachNote | null {
+  const position = clonePosition(positionOf(state));
+  const moves = legalMoves(position);
+  if (moves.length < 2) return null;
+
+  let best = moves[0];
+  let bestScore = -Infinity;
+  let secondScore = -Infinity;
+  let playedScore = -Infinity;
+  for (const option of order(position, moves)) {
+    const undo = make(position, option);
+    const score = -search(position, depth - 1, -MATE * 2, MATE * 2, 1);
+    unmake(position, undo);
+    if (score > bestScore) { secondScore = bestScore; bestScore = score; best = option; }
+    else if (score > secondScore) secondScore = score;
+    if (sameMove(option, move)) playedScore = score;
+  }
+  if (playedScore === -Infinity) return null;
+
+  const loss = Math.max(0, bestScore - playedScore);
+  const verdict: MoveVerdict = sameMove(best, move)
+    ? (sacrifices(position, move) && bestScore - secondScore >= 100 ? "briljant" : "beste")
+    : loss < 30 ? "bra"
+    : loss < 90 ? "unøyaktig"
+    : loss < 250 ? "bom"
+    : "tabbe";
+
+  return { verdict, loss, best, bestText: moveText(position, best) };
+}

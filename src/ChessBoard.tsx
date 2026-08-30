@@ -11,15 +11,18 @@ import {
   COLOR_NAME,
   PIECE_GLYPH,
   PIECE_NAME,
+  VERDICT_MARK,
+  VERDICT_NAME,
   applyChessMove,
   botChessMove,
   createChessGame,
   createChessPlayers,
   movesFrom,
   positionOf,
+  reviewMove,
   squareName,
 } from "./chess.ts";
-import type { ChessMove, ChessPiece, ChessState, PieceColor, PieceType } from "./chess.ts";
+import type { ChessMove, ChessPiece, ChessState, CoachNote, PieceColor, PieceType } from "./chess.ts";
 import type { Difficulty } from "./setup.ts";
 
 /** Litt pause før boten svarer, så trekket rekker å synke inn. */
@@ -32,6 +35,7 @@ export default function ChessBoard(props: {
   myId: string;
   difficulty: Difficulty;
   canSeed: boolean;
+  coach: boolean;
   online: boolean;
   roomCode?: string;
   onCommit: (next: ChessState) => void;
@@ -41,10 +45,13 @@ export default function ChessBoard(props: {
   // faller det bort av seg selv i stedet for å bli ryddet vekk i en effekt.
   const [pick, setPick] = useState<{ square: number; ply: number } | null>(null);
   const [pending, setPending] = useState<{ move: ChessMove; ply: number } | null>(null);
+  const [judged, setJudged] = useState<{ note: CoachNote; ply: number; square: number } | null>(null);
   const timer = useRef(0);
   const ply = state?.history.length ?? -1;
   const from = pick?.ply === ply ? pick.square : null;
   const promotion = pending?.ply === ply ? pending.move : null;
+  // Dommen blir stående mens motstanderen svarer, og forsvinner når du selv flytter igjen.
+  const note = judged && (ply === judged.ply || ply === judged.ply + 1) ? judged.note : null;
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
@@ -87,10 +94,21 @@ export default function ChessBoard(props: {
     );
   }
 
+  const commit = (move: ChessMove) => {
+    setPick(null);
+    setPending(null);
+    if (props.coach) {
+      const verdict = reviewMove(state, move);
+      setJudged(verdict ? { note: verdict, ply: ply + 1, square: move.to } : null);
+    } else {
+      setJudged(null);
+    }
+    onCommit(applyChessMove(state, move));
+  };
+
   const play = (move: ChessMove) => {
     if (move.promotion) { setPending({ move, ply }); return; }
-    setPick(null);
-    onCommit(applyChessMove(state, move));
+    commit(move);
   };
 
   const tap = (square: number) => {
@@ -103,10 +121,7 @@ export default function ChessBoard(props: {
 
   const finish = (type: PieceType) => {
     if (!promotion) return;
-    const move = { ...promotion, promotion: type };
-    setPending(null);
-    setPick(null);
-    onCommit(applyChessMove(state, move));
+    commit({ ...promotion, promotion: type });
   };
 
   const restart = () => {
@@ -121,6 +136,14 @@ export default function ChessBoard(props: {
   // Sitter du med svart, snus brettet så dine egne brikker står nærmest.
   const squares = Array.from({ length: 64 }, (_, index) => (myColor === "hvit" ? index : 63 - index));
   const last = state.history.at(-1)?.move ?? null;
+  const marked = note && judged ? judged.square : null;
+  // Pilen og «var bedre» dukker bare opp når trekket faktisk kostet noe.
+  const missed = note ? note.verdict === "unøyaktig" || note.verdict === "bom" || note.verdict === "tabbe" : false;
+  const hint = missed && note ? note.best : null;
+  const place = (square: number) => {
+    const position = myColor === "hvit" ? square : 63 - square;
+    return { x: (position % 8) + 0.5, y: Math.floor(position / 8) + 0.5 };
+  };
   const opponent = state.players.find((player) => player.color !== myColor);
   const me = state.players.find((player) => player.color === myColor);
   const over = state.outcome !== "spiller";
@@ -137,10 +160,11 @@ export default function ChessBoard(props: {
       </header>
 
       <div className={`chess-board ${yourTurn ? "is-your-turn" : ""}`} role="grid" aria-label="Sjakkbrett">
-        {squares.map((square) => {
+        {squares.map((square, position) => {
           const piece = state.board[square];
           const dark = (Math.floor(square / 8) + square % 8) % 2 === 1;
           const target = options.find((option) => option.to === square);
+          const name = squareName(square);
           const classes = [
             "chess-square",
             dark ? "dark" : "light",
@@ -155,12 +179,18 @@ export default function ChessBoard(props: {
               className={classes}
               onClick={() => tap(square)}
               disabled={!yourTurn}
-              aria-label={`${squareName(square)}${piece ? ` – ${COLOR_NAME[piece.color]} ${PIECE_NAME[piece.type].toLowerCase()}` : ""}`}
+              aria-label={`${name}${piece ? ` – ${COLOR_NAME[piece.color]} ${PIECE_NAME[piece.type].toLowerCase()}` : ""}`}
             >
+              {position % 8 === 0 && <i className="chess-rank">{name[1]}</i>}
+              {position >= 56 && <i className="chess-file">{name[0]}</i>}
               {piece && <span className={`chess-piece ${piece.color}`}>{PIECE_GLYPH[piece.type]}</span>}
+              {square === marked && note && (
+                <b className={`chess-mark ${note.verdict}`} title={VERDICT_NAME[note.verdict]}>{VERDICT_MARK[note.verdict]}</b>
+              )}
             </button>
           );
         })}
+        {hint && <Arrow from={place(hint.from)} to={place(hint.to)} />}
       </div>
 
       <div className="chess-foot">
@@ -173,6 +203,14 @@ export default function ChessBoard(props: {
           {over ? state.message : yourTurn ? (state.check ? "Sjakk! Du må ut av den" : "Din tur") : state.message}
         </p>
       </div>
+
+      {note && (
+        <p className={`chess-coach ${note.verdict}`}>
+          <b>{VERDICT_MARK[note.verdict]}</b>
+          <span>{VERDICT_NAME[note.verdict]}</span>
+          {missed && <small>{note.bestText} var bedre</small>}
+        </p>
+      )}
 
       <Moves history={state.history} />
 
@@ -200,6 +238,26 @@ export default function ChessBoard(props: {
         </div>
       )}
     </section>
+  );
+}
+
+/** Pilen coachen tegner: fra ruta det beste trekket går fra, til ruta det går til. */
+function Arrow({ from, to }: { from: { x: number; y: number }; to: { x: number; y: number } }) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  // Starter utenfor brikken og stopper før midten av målruta, så begge er synlige.
+  const start = { x: from.x + (dx / length) * 0.32, y: from.y + (dy / length) * 0.32 };
+  const end = { x: to.x - (dx / length) * 0.36, y: to.y - (dy / length) * 0.36 };
+  return (
+    <svg className="chess-arrow" viewBox="0 0 8 8" aria-hidden="true">
+      <defs>
+        <marker id="chess-arrowhead" markerWidth="3" markerHeight="3" refX="1.6" refY="1.5" orient="auto">
+          <path d="M0,0 L3,1.5 L0,3 z" />
+        </marker>
+      </defs>
+      <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} markerEnd="url(#chess-arrowhead)" />
+    </svg>
   );
 }
 

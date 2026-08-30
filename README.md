@@ -37,6 +37,21 @@ Mot en venn deler dere samme rom som i Amerikaneren: verten spiller hvit, den so
 svart, og brettet snus så dine egne brikker står nærmest. Brettet lastes først når noen faktisk skal
 spille sjakk.
 
+### Coach på brettet
+
+Skrus på i oppsettet, og gjelder bare dine egne trekk. Hvert trekk får et merke på ruta det gikk til:
+briljant `!!`, beste `★`, bra `✓`, unøyaktig `?!`, bom `?` og tabbe `??`. Var det et bedre trekk,
+tegnes en pil fra og til der coachen ville flyttet, og linjen under brettet sier hvilket trekk det var.
+
+Regnestykket er forskjellen mellom det beste trekket i stillingen og det du spilte, målt i hundredels
+bonde: under 30 er bra, under 90 unøyaktig, under 250 bom, og over det en tabbe. Briljant er
+forbeholdt det beste trekket når det ofrer en brikke og likevel er klart bedre enn nest best.
+
+**Dommen bygger på stillingen slik den var i øyeblikket**, ikke på hvordan partiet endte – samme
+prinsipp som pokercoachen. Merket blir stående mens motstanderen svarer, og forsvinner når du selv
+flytter igjen. Coachen regner tre trekk fram, altså dypere enn boten spiller, så den holder også mot
+det vanskeligste nivået. `reviewMove()` ligger i `src/chess.ts` og er testet i `src/chess.test.ts`.
+
 ## Lokal utvikling
 
 Krever Node.js 22.13 eller nyere.

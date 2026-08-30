@@ -13,6 +13,7 @@ import {
   parseFen,
   positionOf,
   pseudoMoves,
+  reviewMove,
   squareFromName,
   toFen,
   unmake,
@@ -175,4 +176,27 @@ test("every level plays a legal move", () => {
     const chosen = botChessMove(state);
     assert.ok(legalMoves(positionOf(state)).some((option) => option.from === chosen!.from && option.to === chosen!.to));
   }
+});
+
+test("the coach calls a hanging queen a blunder and names the move instead", () => {
+  // Dronningene står mot hverandre: slår du, vinner du henne. Går du til d5, blir hun tatt.
+  const state = game("3qk3/8/8/8/8/8/8/3QK3 w - - 0 1", "vanskelig");
+  const note = reviewMove(state, move("d1", "d5"));
+  assert.equal(note?.verdict, "tabbe");
+  assert.ok(note!.loss >= 250, `tapte ${note!.loss}`);
+  assert.equal(note?.bestText, "Dxd8+");
+});
+
+test("the coach recognises the move it would have played itself", () => {
+  const state = game("4k3/8/8/3q4/4P3/8/8/4K3 w - - 0 1", "vanskelig");
+  const note = reviewMove(state, move("e4", "d5"));
+  assert.equal(note?.verdict, "beste");
+  assert.equal(note?.loss, 0);
+});
+
+test("the coach judges within a moment", () => {
+  const state = game("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 1", "middels");
+  const started = Date.now();
+  assert.ok(reviewMove(state, move("g8", "f6")));
+  assert.ok(Date.now() - started < 1200, `coachen brukte ${Date.now() - started} ms`);
 });
