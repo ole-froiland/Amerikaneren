@@ -37,6 +37,16 @@ Mot en venn deler dere samme rom som i Amerikaneren: verten spiller hvit, den so
 svart, og brettet snus så dine egne brikker står nærmest. Brettet lastes først når noen faktisk skal
 spille sjakk.
 
+### Hvem står best
+
+Baren til venstre for brettet viser hvem som leder. Din egen farge fyller nedenfra, som på brettet,
+og tallet står alltid sett fra hvit: `+1,2` betyr at hvit leder med drøyt en bonde, `M3` at det er
+matt om tre trekk. Utslaget følger samme kurve som vinnersjanse (`gaugeShare()`), så små forsprang
+er synlige uten at store fyller hele baren.
+
+Tallet kommer fra et grunt søk på to trekk – nok til å se at en brikke henger, raskt nok til å regnes
+på nytt etter hvert eneste trekk. Baren står der uansett om coachen er på.
+
 ### Coach på brettet
 
 Skrus på i oppsettet, og gjelder bare dine egne trekk. Hvert trekk får et merke på ruta det gikk til:

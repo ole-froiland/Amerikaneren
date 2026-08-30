@@ -781,3 +781,43 @@ export function reviewMove(state: ChessState, move: ChessMove, depth = REVIEW_DE
 
   return { verdict, loss, best, bestText: moveText(position, best) };
 }
+
+/* --- Hvem står best --- */
+
+export interface Advantage {
+  /** Hundredels bonde, sett fra hvit. Positivt betyr at hvit står best. */
+  score: number;
+  /** Antall trekk til matt når det finnes en, med fortegn for hvem som setter den. */
+  mate: number | null;
+}
+
+/** Grunn nok til å gå raskt, dyp nok til å se at en brikke henger. */
+export const GAUGE_DEPTH = 2;
+
+export function advantage(state: ChessState, depth = GAUGE_DEPTH): Advantage {
+  if (state.outcome === "matt") return { score: state.winner === "hvit" ? MATE : -MATE, mate: 0 };
+  if (state.outcome !== "spiller") return { score: 0, mate: null };
+
+  const position = clonePosition(positionOf(state));
+  const raw = search(position, depth, -MATE * 2, MATE * 2, 0);
+  const score = state.turn === "hvit" ? raw : -raw;
+  if (Math.abs(score) < MATE / 2) return { score, mate: null };
+  // Matt om n halvtrekk blir n/2 trekk, med fortegnet til den som setter den.
+  const plies = MATE - Math.abs(score);
+  const moves = Math.max(1, Math.ceil(plies / 2));
+  return { score, mate: score > 0 ? moves : -moves };
+}
+
+/** Hvor stor del av baren hvit fyller. Samme kurve som vinnersjanse. */
+export const gaugeShare = (advantage: Advantage) => {
+  if (advantage.mate !== null) return advantage.mate > 0 ? 1 : advantage.mate < 0 ? 0 : advantage.score > 0 ? 1 : 0;
+  return Math.min(0.94, Math.max(0.06, 1 / (1 + 10 ** (-advantage.score / 400))));
+};
+
+/** Tallet slik det står på baren: «+1,2», «−0,8», «M3». */
+export function gaugeLabel(advantage: Advantage): string {
+  if (advantage.mate !== null) return advantage.mate === 0 ? "matt" : `M${Math.abs(advantage.mate)}`;
+  const pawns = advantage.score / 100;
+  if (Math.abs(pawns) < 0.05) return "0,0";
+  return `${pawns > 0 ? "+" : "−"}${Math.abs(pawns).toFixed(1).replace(".", ",")}`;
+}

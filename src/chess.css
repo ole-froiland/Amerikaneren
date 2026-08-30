@@ -3,7 +3,8 @@
 .chess-screen {
   /* Brettet tar plassen som er igjen når merkelinjen, navnene, coachen og
      trekklisten har fått sitt – ellers havner dommen under skjermkanten. */
-  --board: max(240px, min(96vw, calc(100dvh - 280px), 620px));
+  --gauge: 18px;
+  --board: max(232px, min(calc(96vw - var(--gauge) - 8px), calc(100dvh - 280px), 600px));
   --light: #eee3cd;
   --dark: #5f8a68;
   width: min(98vw, 640px);
@@ -14,8 +15,8 @@
   gap: 8px;
 }
 
-.chess-strip, .chess-foot {
-  width: var(--board);
+.chess-strip, .chess-foot, .chess-coach, .chess-moves {
+  width: calc(var(--board) + var(--gauge) + 8px);
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -59,6 +60,51 @@
 }
 
 .chess-taken .chess-piece { margin-right: -3px; }
+
+.chess-play {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* Baren som viser hvem som står best. Fargen din fyller nedenfra. */
+.chess-gauge {
+  position: relative;
+  width: var(--gauge);
+  height: var(--board);
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 8px 22px #0005;
+}
+
+.chess-gauge.hvit-nede { background: #16241d; }
+.chess-gauge.svart-nede { background: #efe7d6; }
+
+.chess-gauge-fill {
+  position: absolute;
+  inset: auto 0 0 0;
+  transition: height .35s ease;
+}
+
+.chess-gauge.hvit-nede .chess-gauge-fill { background: #efe7d6; }
+.chess-gauge.svart-nede .chess-gauge-fill { background: #16241d; }
+
+.chess-gauge-value {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+
+.chess-gauge-value.oppe { top: 3px; }
+.chess-gauge-value.nede { bottom: 3px; }
+.chess-gauge.hvit-nede .chess-gauge-value.oppe { color: #cfe0d6; }
+.chess-gauge.hvit-nede .chess-gauge-value.nede { color: #16241d; }
+.chess-gauge.svart-nede .chess-gauge-value.oppe { color: #2a3a31; }
+.chess-gauge.svart-nede .chess-gauge-value.nede { color: #efe7d6; }
 
 .chess-board {
   position: relative;
@@ -286,6 +332,6 @@
 .chess-promotion small { color: #7a8880; font-size: 10px; }
 
 @media (max-height: 640px) {
-  .chess-screen { --board: max(220px, min(96vw, calc(100dvh - 210px), 560px)); gap: 5px; }
+  .chess-screen { --board: max(210px, min(calc(96vw - var(--gauge) - 8px), calc(100dvh - 210px), 540px)); gap: 5px; }
   .chess-moves { display: none; }
 }

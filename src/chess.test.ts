@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   START_FEN,
+  advantage,
   applyChessMove,
   botChessMove,
   createChessGame,
   createChessPlayers,
+  gaugeLabel,
+  gaugeShare,
   inCheck,
   legalMoves,
   make,
@@ -199,4 +202,30 @@ test("the coach judges within a moment", () => {
   const started = Date.now();
   assert.ok(reviewMove(state, move("g8", "f6")));
   assert.ok(Date.now() - started < 1200, `coachen brukte ${Date.now() - started} ms`);
+});
+
+test("the gauge knows who is ahead", () => {
+  const even = advantage(game(START_FEN));
+  assert.ok(Math.abs(even.score) < 60, `utgangsstillingen skulle vært jevn, var ${even.score}`);
+  assert.equal(gaugeLabel(even), "0,0");
+
+  const white = advantage(game("4k3/8/8/8/8/8/8/3QK3 w - - 0 1"));
+  assert.ok(white.score > 500, `hvit med dronning mer: ${white.score}`);
+  assert.ok(gaugeShare(white) > 0.85);
+
+  const black = advantage(game("3qk3/8/8/8/8/8/8/4K3 w - - 0 1"));
+  assert.ok(black.score < -500, `svart med dronning mer: ${black.score}`);
+  assert.equal(gaugeLabel(black).startsWith("−"), true);
+  assert.ok(gaugeShare(black) < 0.15);
+});
+
+test("the gauge counts a mate instead of pawns", () => {
+  const mated = applyChessMove(game("6k1/5ppp/8/8/8/8/8/R3K2R w KQ - 0 1"), move("a1", "a8"));
+  const done = advantage(mated);
+  assert.equal(done.mate, 0);
+  assert.equal(gaugeLabel(done), "matt");
+  assert.equal(gaugeShare(done), 1);
+
+  const coming = advantage(game("6k1/5ppp/8/8/8/8/8/R3K2R w KQ - 0 1"), 3);
+  assert.ok(coming.mate !== null && coming.mate > 0, `ventet matt for hvit, fikk ${JSON.stringify(coming)}`);
 });

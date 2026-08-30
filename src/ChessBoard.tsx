@@ -13,16 +13,19 @@ import {
   PIECE_NAME,
   VERDICT_MARK,
   VERDICT_NAME,
+  advantage,
   applyChessMove,
   botChessMove,
   createChessGame,
   createChessPlayers,
+  gaugeLabel,
+  gaugeShare,
   movesFrom,
   positionOf,
   reviewMove,
   squareName,
 } from "./chess.ts";
-import type { ChessMove, ChessPiece, ChessState, CoachNote, PieceColor, PieceType } from "./chess.ts";
+import type { Advantage, ChessMove, ChessPiece, ChessState, CoachNote, PieceColor, PieceType } from "./chess.ts";
 import type { Difficulty } from "./setup.ts";
 
 /** Litt pause før boten svarer, så trekket rekker å synke inn. */
@@ -69,6 +72,8 @@ export default function ChessBoard(props: {
   }, [state, props.myId]);
 
   const yourTurn = Boolean(state) && state!.outcome === "spiller" && state!.turn === myColor;
+  // Hvem som står best, regnet på nytt hver gang stillingen endrer seg.
+  const gauge = useMemo(() => (state ? advantage(state) : null), [state]);
   const options = useMemo(
     () => (state && from !== null && yourTurn ? movesFrom(positionOf(state), from) : []),
     [state, from, yourTurn],
@@ -159,7 +164,9 @@ export default function ChessBoard(props: {
         {props.roomCode && <span className="chess-code">{props.roomCode}</span>}
       </header>
 
-      <div className={`chess-board ${yourTurn ? "is-your-turn" : ""}`} role="grid" aria-label="Sjakkbrett">
+      <div className="chess-play">
+        {gauge && <Gauge advantage={gauge} bottom={myColor} />}
+        <div className={`chess-board ${yourTurn ? "is-your-turn" : ""}`} role="grid" aria-label="Sjakkbrett">
         {squares.map((square, position) => {
           const piece = state.board[square];
           const dark = (Math.floor(square / 8) + square % 8) % 2 === 1;
@@ -190,7 +197,8 @@ export default function ChessBoard(props: {
             </button>
           );
         })}
-        {hint && <Arrow from={place(hint.from)} to={place(hint.to)} />}
+          {hint && <Arrow from={place(hint.from)} to={place(hint.to)} />}
+        </div>
       </div>
 
       <div className="chess-foot">
@@ -238,6 +246,26 @@ export default function ChessBoard(props: {
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Baren ved siden av brettet: hvor mye den ene siden står bedre. Fargen din
+ * fyller nedenfra, som på brettet, og tallet står alltid sett fra hvit.
+ */
+function Gauge({ advantage, bottom }: { advantage: Advantage; bottom: PieceColor }) {
+  const white = gaugeShare(advantage);
+  const share = bottom === "hvit" ? white : 1 - white;
+  const label = gaugeLabel(advantage);
+  return (
+    <div
+      className={`chess-gauge ${bottom === "hvit" ? "hvit-nede" : "svart-nede"}`}
+      aria-label={`Stillingen står ${label} for hvit`}
+    >
+      <div className="chess-gauge-fill" style={{ height: `${share * 100}%` }} />
+      {/* Tallet flytter seg ned hvis fyllet dekker toppen. */}
+      <span className={`chess-gauge-value ${share > 0.82 ? "nede" : "oppe"}`}>{label}</span>
+    </div>
   );
 }
 
